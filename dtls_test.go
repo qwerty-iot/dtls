@@ -78,10 +78,9 @@ func (s *DtlsSuite) TestSimple(c *C) {
 	seedData := common.RandomBytes(20)
 
 	peer.Write(seedData)
-
-	data, replyFrom := client.Read()
+	data, err := peer.Read(time.Second * 5)
+	c.Assert(err, IsNil)
 	c.Assert(hex.EncodeToString(data), Equals, hex.EncodeToString(seedData))
-	c.Assert(replyFrom, NotNil)
 }
 
 /*

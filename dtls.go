@@ -62,7 +62,11 @@ func receiver(l *Listener) {
 			for {
 				rec, rem, err := p.session.ParseRecord(data)
 				if err == nil {
-					l.readQueue <- &msg{rec.Data, p}
+					if p.queue != nil {
+						p.queue <- rec.Data
+					} else {
+						l.readQueue <- &msg{rec.Data, p}
+					}
 					//TODO handle case where queue is full and not being read
 				} else {
 					common.LogWarn("[%s][%s] failed to decrypt packet from %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), err.Error())
@@ -90,6 +94,7 @@ func (l *Listener) addServerPeer(tpeer transport.Peer) (*Peer, error) {
 
 func (l *Listener) AddPeer(addr string, identity string) (*Peer, error) {
 	peer := &Peer{peer: l.transport.NewPeer(addr)}
+	peer.UseQueue(true)
 	peer.session = session.NewClientSession(peer.peer)
 	peer.session.Client.Identity = identity
 	l.mux.Lock()
