@@ -170,7 +170,7 @@ func (s *HandshakeSuite) TestServerHelloEncode(c *C) {
 	sessionId := common.RandomBytes(32)
 
 	hs := New(Type_ServerHello)
-	hs.ServerHello.Init(randTime, w.Bytes(), sessionId)
+	hs.ServerHello.Init(w.Bytes(), sessionId)
 	hsbytes := hs.Bytes()
 
 	handshake, err := ParseHandshake(hsbytes)
