@@ -1,0 +1,15 @@
+language: go
+
+go:
+- 1.6.2
+
+install:
+- go get gopkg.in/check.v1
+- go get github.com/bocajim/dtls
+
+script:
+- go test github.com/bocajim/dtls/crypto
+- go test github.com/bocajim/dtls/handshake
+- go test github.com/bocajim/dtls/record
+- go test github.com/bocajim/dtls/session
+- go test github.com/bocajim/dtls
