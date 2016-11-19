@@ -22,8 +22,8 @@ Coverage
 Package | Coverage
 ------------ | -------------
 dtls | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls)](http://gocover.io/github.com/bocajim/dtls)
-dtls/session | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/crypto)](http://gocover.io/github.com/bocajim/dtls/crypto)
-dtls/session | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/handshake)](http://gocover.io/github.com/bocajim/dtls/handshake)
+dtls/crypto | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/crypto)](http://gocover.io/github.com/bocajim/dtls/crypto)
+dtls/handshake | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/handshake)](http://gocover.io/github.com/bocajim/dtls/handshake)
 dtls/record | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/record)](http://gocover.io/github.com/bocajim/dtls/record)
 dtls/session | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/session)](http://gocover.io/github.com/bocajim/dtls/session)
 

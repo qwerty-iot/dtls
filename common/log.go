@@ -16,7 +16,7 @@ const (
 type LogFunc func(ts time.Time, level string, msg string)
 
 var logFunc LogFunc = defaultLogFunc
-var logLevel int = 3
+var logLevel int = 0
 
 func LogLevelSet(level string) {
 	switch level {
