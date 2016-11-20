@@ -2,6 +2,7 @@ dtls
 ======
 
 [![Build Status](https://travis-ci.org/bocajim/dtls.svg?branch=master)](https://travis-ci.org/bocajim/dtls)
+[![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls)](http://gocover.io/github.com/bocajim/dtls)
 [![GoDoc](https://godoc.org/github.com/bocajim/dtls?status.png)](http://godoc.org/github.com/bocajim/dtls)
 
 https://github.com/bocajim/dtls
@@ -15,17 +16,6 @@ Key Features
 * Supports TLS_PSK_WITH_AES_128_CCM_8 cipher [RFC-6655](https://tools.ietf.org/html/rfc6655)
 * Supports pre-shared key authentication, does not support certificate based authentication
 * Designed for OMA LWM2M comliance [LWM2M](http://technical.openmobilealliance.org/Technical/technical-information/release-program/current-releases/oma-lightweightm2m-v1-0)
-
-Coverage
---------
-
-Package | Coverage
------------- | -------------
-dtls | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls)](http://gocover.io/github.com/bocajim/dtls)
-dtls/crypto | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/crypto)](http://gocover.io/github.com/bocajim/dtls/crypto)
-dtls/handshake | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/handshake)](http://gocover.io/github.com/bocajim/dtls/handshake)
-dtls/record | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/record)](http://gocover.io/github.com/bocajim/dtls/record)
-dtls/session | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/session)](http://gocover.io/github.com/bocajim/dtls/session)
 
 TODO
 ----
