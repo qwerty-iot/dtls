@@ -1,11 +1,9 @@
-package handshake
+package dtls
 
 import (
 	"encoding/binary"
 	"fmt"
 	"time"
-
-	"github.com/bocajim/dtls/common"
 )
 
 type clientHello struct {
@@ -23,7 +21,7 @@ type clientHello struct {
 }
 
 func (h *clientHello) Init(randomBytes []byte, cookie []byte) {
-	h.version = common.DtlsVersion12
+	h.version = DtlsVersion12
 	h.randomBytes = randomBytes
 	h.randomTime = binary.BigEndian.Uint32(h.randomBytes[:4])
 	if cookie != nil {
@@ -36,7 +34,7 @@ func (h *clientHello) Init(randomBytes []byte, cookie []byte) {
 	h.compressionMethods = []CompressionMethod{CompressionMethod_Null}
 }
 
-func (h *clientHello) Parse(rdr *common.Reader) error {
+func (h *clientHello) Parse(rdr *byteReader) error {
 	h.version = rdr.GetUint16()
 	h.randomBytes = rdr.GetBytes(32)
 	h.randomTime = binary.BigEndian.Uint32(h.randomBytes[:4])
@@ -66,7 +64,7 @@ func (h *clientHello) Parse(rdr *common.Reader) error {
 }
 
 func (h *clientHello) Bytes() []byte {
-	w := common.NewWriter()
+	w := newByteWriter()
 	w.PutUint16(h.version)
 	w.PutBytes(h.randomBytes)
 	w.PutUint8(h.sessionIdLen)
@@ -95,7 +93,7 @@ func (h *clientHello) Bytes() []byte {
 func (h *clientHello) Print() string {
 	suitesStr := ""
 	for _, suite := range h.cipherSuites {
-		suitesStr += fmt.Sprintf("%s,", CipherSuiteToString(suite))
+		suitesStr += fmt.Sprintf("%s,", cipherSuiteToString(suite))
 	}
 	suitesStr = suitesStr[:len(suitesStr)-1]
 

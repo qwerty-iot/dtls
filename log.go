@@ -1,4 +1,4 @@
-package common
+package dtls
 
 import (
 	"fmt"
@@ -37,28 +37,28 @@ func defaultLogFunc(ts time.Time, level string, msg string) {
 	log.Printf(" [" + level + "] " + msg)
 }
 
-func LogError(f string, args ...interface{}) {
+func logError(f string, args ...interface{}) {
 	if logLevel < 1 {
 		return
 	}
 	logFunc(time.Now(), LogLevelError, fmt.Sprintf(f, args...))
 }
 
-func LogWarn(f string, args ...interface{}) {
+func logWarn(f string, args ...interface{}) {
 	if logLevel < 2 {
 		return
 	}
 	logFunc(time.Now(), LogLevelWarn, fmt.Sprintf(f, args...))
 }
 
-func LogInfo(f string, args ...interface{}) {
+func logInfo(f string, args ...interface{}) {
 	if logLevel < 3 {
 		return
 	}
 	logFunc(time.Now(), LogLevelInfo, fmt.Sprintf(f, args...))
 }
 
-func LogDebug(f string, args ...interface{}) {
+func logDebug(f string, args ...interface{}) {
 	if logLevel < 4 {
 		return
 	}

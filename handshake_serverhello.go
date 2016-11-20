@@ -1,11 +1,9 @@
-package handshake
+package dtls
 
 import (
 	"encoding/binary"
 	"fmt"
 	"time"
-
-	"github.com/bocajim/dtls/common"
 )
 
 type serverHello struct {
@@ -19,7 +17,7 @@ type serverHello struct {
 }
 
 func (h *serverHello) Init(randomBytes []byte, sessionId []byte) {
-	h.version = common.DtlsVersion12
+	h.version = DtlsVersion12
 	h.randomBytes = randomBytes
 	h.randomTime = binary.BigEndian.Uint32(h.randomBytes[:4])
 	h.sessionId = sessionId
@@ -28,7 +26,7 @@ func (h *serverHello) Init(randomBytes []byte, sessionId []byte) {
 	h.compressionMethod = CompressionMethod_Null
 }
 
-func (h *serverHello) Parse(rdr *common.Reader) error {
+func (h *serverHello) Parse(rdr *byteReader) error {
 	h.version = rdr.GetUint16()
 	h.randomBytes = rdr.GetBytes(32)
 	h.randomTime = binary.BigEndian.Uint32(h.randomBytes[:4])
@@ -43,7 +41,7 @@ func (h *serverHello) Parse(rdr *common.Reader) error {
 }
 
 func (h *serverHello) Bytes() []byte {
-	w := common.NewWriter()
+	w := newByteWriter()
 	w.PutUint16(h.version)
 	w.PutBytes(h.randomBytes)
 	w.PutUint8(h.sessionIdLen)
@@ -57,7 +55,7 @@ func (h *serverHello) Bytes() []byte {
 }
 
 func (h *serverHello) Print() string {
-	return fmt.Sprintf("version[%X] randomData[%s][%d bytes] sessionId[%X][%d] cipherSuite[%s] compressionMethod[%x]", h.version, time.Unix(int64(h.randomTime), 0).String(), len(h.randomBytes), h.sessionId, h.sessionIdLen, CipherSuiteToString(h.cipherSuite), h.compressionMethod)
+	return fmt.Sprintf("version[%X] randomData[%s][%d bytes] sessionId[%X][%d] cipherSuite[%s] compressionMethod[%x]", h.version, time.Unix(int64(h.randomTime), 0).String(), len(h.randomBytes), h.sessionId, h.sessionIdLen, cipherSuiteToString(h.cipherSuite), h.compressionMethod)
 }
 
 func (h *serverHello) GetRandom() (time.Time, []byte) {

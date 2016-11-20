@@ -7,9 +7,6 @@ import (
 	"time"
 
 	. "gopkg.in/check.v1"
-
-	"github.com/bocajim/dtls/common"
-	"github.com/bocajim/dtls/keystore"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -24,7 +21,7 @@ type DtlsSuite struct{}
 func (s *DtlsSuite) SetUpSuite(c *C) {
 	var err error
 
-	common.LogLevelSet("debug")
+	LogLevelSet("debug")
 
 	server, err = NewUdpListener(":5684", time.Second*5)
 	c.Assert(server, NotNil)
@@ -34,8 +31,8 @@ func (s *DtlsSuite) SetUpSuite(c *C) {
 	c.Assert(client, NotNil)
 	c.Assert(err, IsNil)
 
-	mks := keystore.NewMemoryKeyStore()
-	keystore.SetKeyStores([]keystore.KeyStore{mks})
+	mks := NewKeystoreInMemory()
+	SetKeyStores([]Keystore{mks})
 	psk, _ := hex.DecodeString("00112233445566")
 	mks.AddKey("myIdentity", psk)
 }
@@ -78,7 +75,7 @@ func (s *DtlsSuite) TestSimple(c *C) {
 	c.Assert(err, IsNil)
 	c.Log("connected")
 
-	seedData := common.RandomBytes(20)
+	seedData := randomBytes(20)
 
 	peer.Write(seedData)
 

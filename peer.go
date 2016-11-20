@@ -5,14 +5,11 @@ import (
 	"time"
 
 	"github.com/bocajim/dtls/alert"
-	"github.com/bocajim/dtls/record"
-	"github.com/bocajim/dtls/session"
-	"github.com/bocajim/dtls/transport"
 )
 
 type Peer struct {
-	peer    transport.Peer
-	session *session.Session
+	peer    TransportPeer
+	session *session
 	queue   chan []byte
 }
 
@@ -29,19 +26,13 @@ func (p *Peer) UseQueue(en bool) {
 }
 
 func (p *Peer) Close() {
-	rec := record.New(record.ContentType_Alert)
-	rec.Epoch = p.session.GetEpoch()
-	rec.Sequence = p.session.GetNextSequence()
-	rec.SetData(alert.New(alert.TypeFatal, alert.DescCloseNotify).Bytes())
-	p.session.WriteRecord(rec)
+	rec := newRecord(ContentType_Alert, p.session.getEpoch(), p.session.getNextSequence(), alert.New(alert.TypeFatal, alert.DescCloseNotify).Bytes())
+	p.session.writeRecord(rec)
 }
 
 func (p *Peer) Write(data []byte) error {
-	rec := record.New(record.ContentType_Appdata)
-	rec.Epoch = p.session.GetEpoch()
-	rec.Sequence = p.session.GetNextSequence()
-	rec.SetData(data)
-	return p.session.WriteRecord(rec)
+	rec := newRecord(ContentType_Appdata, p.session.getEpoch(), p.session.getNextSequence(), data)
+	return p.session.writeRecord(rec)
 }
 
 func (p *Peer) Read(timeout time.Duration) ([]byte, error) {

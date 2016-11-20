@@ -1,64 +1,64 @@
-package common
+package dtls
 
 import (
 	"bytes"
 	"encoding/binary"
 )
 
-type Writer struct {
+type byteWriter struct {
 	buf *bytes.Buffer
 }
 
-func NewWriter() *Writer {
-	return &Writer{buf: new(bytes.Buffer)}
+func newByteWriter() *byteWriter {
+	return &byteWriter{buf: new(bytes.Buffer)}
 }
 
-func (w *Writer) Bytes() []byte {
+func (w *byteWriter) Bytes() []byte {
 	return w.buf.Bytes()
 }
 
-func (w *Writer) PadTo(l int) {
+func (w *byteWriter) PadTo(l int) {
 	if w.buf.Len() < l {
 		buf := make([]byte, l-w.buf.Len())
 		w.PutBytes(buf)
 	}
 }
 
-func (w *Writer) PutUint8(value uint8) {
+func (w *byteWriter) PutUint8(value uint8) {
 	binary.Write(w.buf, binary.BigEndian, value)
 	return
 }
 
-func (w *Writer) PutUint16(value uint16) {
+func (w *byteWriter) PutUint16(value uint16) {
 	binary.Write(w.buf, binary.BigEndian, value)
 	return
 }
 
-func (w *Writer) PutUint24(value uint32) {
+func (w *byteWriter) PutUint24(value uint32) {
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, value)
 	w.buf.Write(buf[1:])
 	return
 }
 
-func (w *Writer) PutUint32(value uint32) {
+func (w *byteWriter) PutUint32(value uint32) {
 	binary.Write(w.buf, binary.BigEndian, value)
 	return
 }
 
-func (w *Writer) PutUint48(value uint64) {
+func (w *byteWriter) PutUint48(value uint64) {
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, value)
 	w.buf.Write(buf[2:])
 	return
 }
 
-func (w *Writer) PutString(value string) {
+func (w *byteWriter) PutString(value string) {
 	binary.Write(w.buf, binary.BigEndian, value)
 	return
 }
 
-func (w *Writer) PutBytes(value []byte) {
+func (w *byteWriter) PutBytes(value []byte) {
 	w.buf.Write(value)
 	return
 }

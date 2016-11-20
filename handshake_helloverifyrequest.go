@@ -1,9 +1,7 @@
-package handshake
+package dtls
 
 import (
 	"fmt"
-
-	"github.com/bocajim/dtls/common"
 )
 
 type helloVerifyRequest struct {
@@ -13,12 +11,12 @@ type helloVerifyRequest struct {
 }
 
 func (h *helloVerifyRequest) Init(cookie []byte) {
-	h.version = common.DtlsVersion12
+	h.version = DtlsVersion12
 	h.cookie = cookie
 	h.cookieLen = uint8(len(h.cookie))
 }
 
-func (h *helloVerifyRequest) Parse(rdr *common.Reader) error {
+func (h *helloVerifyRequest) Parse(rdr *byteReader) error {
 	h.version = rdr.GetUint16()
 	h.cookieLen = rdr.GetUint8()
 	if h.cookieLen > 0 {
@@ -28,7 +26,7 @@ func (h *helloVerifyRequest) Parse(rdr *common.Reader) error {
 }
 
 func (h *helloVerifyRequest) Bytes() []byte {
-	w := common.NewWriter()
+	w := newByteWriter()
 	w.PutUint16(h.version)
 	w.PutUint8(h.cookieLen)
 	w.PutBytes(h.cookie)

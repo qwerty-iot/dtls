@@ -1,51 +1,46 @@
-package session
+package dtls
 
 import (
 	"errors"
 	"reflect"
 	"time"
-
-	"github.com/bocajim/dtls/common"
-	"github.com/bocajim/dtls/crypto"
-	"github.com/bocajim/dtls/handshake"
-	"github.com/bocajim/dtls/keystore"
-	"github.com/bocajim/dtls/record"
 )
 
-func (s *Session) ParseRecord(data []byte) (*record.Record, []byte, error) {
+func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 
-	rec, rem, err := record.ParseRecord(data)
+	rec, rem, err := parseRecord(data)
 	if err != nil {
-		common.LogWarn("dtls: [%s] parse record: %s", s.peer.String(), err.Error())
+		logWarn("dtls: [%s] parse record: %s", s.peer.String(), err.Error())
 		return nil, nil, err
 	}
 
-	common.LogDebug("dtls: [%s] read %s", s.peer.String(), rec.Print())
+	logDebug("dtls: [%s] read %s", s.peer.String(), rec.Print())
 
 	if s.decrypt {
 		var iv []byte
 		var key []byte
-		if s.Type == TypeClient {
+		if s.Type == SessionType_Client {
 			iv = s.KeyBlock.ServerIV
 			key = s.KeyBlock.ServerWriteKey
 		} else {
 			iv = s.KeyBlock.ClientIV
 			key = s.KeyBlock.ClientWriteKey
 		}
-		nonce := crypto.CreateNonce(iv, rec.Epoch, rec.Sequence)
-		aad := crypto.CreateAad(rec.Epoch, rec.Sequence, uint8(rec.ContentType), uint16(len(rec.Data)-16))
-		clearText, err := crypto.PayloadDecrypt(rec.Data[8:], nonce, key, aad, s.peer.String())
+		nonce := newNonce(iv, rec.Epoch, rec.Sequence)
+		aad := newAad(rec.Epoch, rec.Sequence, uint8(rec.ContentType), uint16(len(rec.Data)-16))
+		clearText, err := dataDecrypt(rec.Data[8:], nonce, key, aad, s.peer.String())
 		if err != nil {
 			return nil, nil, err
 		}
+
 		rec.SetData(clearText)
 	}
 
 	return rec, rem, nil
 }
 
-func (s *Session) parseHandshake(data []byte) (*handshake.Handshake, *record.Record, []byte, error) {
-	rec, rem, err := s.ParseRecord(data)
+func (s *session) parseHandshake(data []byte) (*handshake, *record, []byte, error) {
+	rec, rem, err := s.parseRecord(data)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -53,66 +48,64 @@ func (s *Session) parseHandshake(data []byte) (*handshake.Handshake, *record.Rec
 		return nil, rec, rem, nil
 		//return nil, nil, errors.New("dtls: response is not a handshake")
 	}
-	hs, err := handshake.ParseHandshake(rec.Data)
-	s.UpdateHash(rec.Data)
+	hs, err := parseHandshake(rec.Data)
+	s.updateHash(rec.Data)
 	if err != nil {
 		return nil, nil, rem, err
 	}
-	common.LogDebug("dtls: [%s] read %s", s.peer.String(), hs.Print())
+	logDebug("dtls: [%s] read %s", s.peer.String(), hs.Print())
 	return hs, rec, rem, err
 }
 
-func (s *Session) writeHandshake(hs *handshake.Handshake) error {
-	rec := record.New(record.ContentType_Handshake)
-	rec.Epoch = s.GetEpoch()
-	rec.Sequence = s.GetNextSequence()
+func (s *session) writeHandshake(hs *handshake) error {
 	hs.Header.Sequence = s.handshake.seq
 	s.handshake.seq += 1
-	rec.SetData(hs.Bytes())
 
-	s.UpdateHash(rec.Data)
+	rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), hs.Bytes())
 
-	common.LogDebug("dtls: [%s] write %s", s.peer.String(), hs.Print())
+	s.updateHash(rec.Data)
 
-	return s.WriteRecord(rec)
+	logDebug("dtls: [%s] write %s", s.peer.String(), hs.Print())
+
+	return s.writeRecord(rec)
 }
 
-func (s *Session) WriteRecord(rec *record.Record) error {
+func (s *session) writeRecord(rec *record) error {
 	if s.encrypt {
 		var iv []byte
 		var key []byte
-		if s.Type == TypeClient {
+		if s.Type == SessionType_Client {
 			iv = s.KeyBlock.ClientIV
 			key = s.KeyBlock.ClientWriteKey
 		} else {
 			iv = s.KeyBlock.ServerIV
 			key = s.KeyBlock.ServerWriteKey
 		}
-		nonce := crypto.CreateNonce(iv, rec.Epoch, rec.Sequence)
-		aad := crypto.CreateAad(rec.Epoch, rec.Sequence, uint8(rec.ContentType), uint16(len(rec.Data)))
-		cipherText, err := crypto.PayloadEncrypt(rec.Data, nonce, key, aad, s.peer.String())
+		nonce := newNonce(iv, rec.Epoch, rec.Sequence)
+		aad := newAad(rec.Epoch, rec.Sequence, uint8(rec.ContentType), uint16(len(rec.Data)))
+		cipherText, err := dataEncrypt(rec.Data, nonce, key, aad, s.peer.String())
 		if err != nil {
 			return err
 		}
-		w := common.NewWriter()
+		w := newByteWriter()
 		w.PutUint16(rec.Epoch)
 		w.PutUint48(rec.Sequence)
 		w.PutBytes(cipherText)
 		rec.SetData(w.Bytes())
-		common.LogDebug("dtls: [%s] write %s", s.peer.String(), rec.Print())
+		logDebug("dtls: [%s] write %s", s.peer.String(), rec.Print())
 		return s.peer.WritePacket(rec.Bytes())
 	} else {
-		common.LogDebug("dtls: [%s] write %s", s.peer.String(), rec.Print())
+		logDebug("dtls: [%s] write %s", s.peer.String(), rec.Print())
 		return s.peer.WritePacket(rec.Bytes())
 	}
 }
 
-func (s *Session) generateCookie() {
-	s.handshake.cookie = common.RandomBytes(16)
+func (s *session) generateCookie() {
+	s.handshake.cookie = randomBytes(16)
 }
 
-func (s *Session) StartHandshake() error {
-	reqHs := handshake.New(handshake.Type_ClientHello)
+func (s *session) startHandshake() error {
+	reqHs := newHandshake(handshakeType_ClientHello)
 	reqHs.ClientHello.Init(s.Client.Random, nil)
 
 	err := s.writeHandshake(reqHs)
@@ -122,7 +115,7 @@ func (s *Session) StartHandshake() error {
 	return nil
 }
 
-func (s *Session) WaitForHandshake(timeout time.Duration) error {
+func (s *session) waitForHandshake(timeout time.Duration) error {
 	if s.handshake.done == nil {
 		return errors.New("dtls: handshake not in-progress")
 	}
@@ -139,9 +132,9 @@ func (s *Session) WaitForHandshake(timeout time.Duration) error {
 	return errors.New("dtls: unknown wait error")
 }
 
-func (s *Session) ProcessHandshakePacket(data []byte) error {
-	var reqHs, rspHs *handshake.Handshake
-	var rspRec *record.Record
+func (s *session) processHandshakePacket(data []byte) error {
+	var reqHs, rspHs *handshake
+	var rspRec *record
 	var rem []byte
 	var err error
 
@@ -151,9 +144,9 @@ func (s *Session) ProcessHandshakePacket(data []byte) error {
 	}
 
 	switch rspRec.ContentType {
-	case record.ContentType_Handshake:
+	case ContentType_Handshake:
 		switch rspHs.Header.HandshakeType {
-		case handshake.Type_ClientHello:
+		case handshakeType_ClientHello:
 			cookie := rspHs.ClientHello.GetCookie()
 			if len(cookie) == 0 {
 				s.generateCookie()
@@ -167,10 +160,10 @@ func (s *Session) ProcessHandshakePacket(data []byte) error {
 				s.Client.RandomTime, s.Client.Random = rspHs.ClientHello.GetRandom()
 				s.handshake.state = "recv-clienthello"
 			}
-		case handshake.Type_HelloVerifyRequest:
+		case handshakeType_HelloVerifyRequest:
 			if len(s.handshake.cookie) == 0 {
 				s.handshake.cookie = rspHs.HelloVerifyRequest.GetCookie()
-				s.ResetHash()
+				s.resetHash()
 				s.handshake.state = "recv-helloverifyrequest"
 			} else {
 				s.handshake.state = "failed"
@@ -178,37 +171,37 @@ func (s *Session) ProcessHandshakePacket(data []byte) error {
 				break
 			}
 			s.handshake.state = "recv-helloverifyrequest"
-		case handshake.Type_ServerHello:
+		case handshakeType_ServerHello:
 			s.Server.RandomTime, s.Server.Random = rspHs.ServerHello.GetRandom()
 			s.Id = rspHs.ServerHello.GetSessionId()
 			s.handshake.state = "recv-serverhello"
-		case handshake.Type_ClientKeyExchange:
+		case handshakeType_ClientKeyExchange:
 			s.Client.Identity = string(rspHs.ClientKeyExchange.GetIdentity())
-			psk := keystore.GetPsk(s.Client.Identity)
+			psk := GetPskFromKeystore(s.Client.Identity)
 			if psk == nil {
 				err = errors.New("dtls: no valid psk for identity")
 				break
 			}
 			s.Psk = psk
-			s.InitKeyBlock()
+			s.initKeyBlock()
 
 			s.handshake.state = "recv-clientkeyexchange"
 
 			//TODO fail here if identity isn't found
-		case handshake.Type_ServerKeyExchange:
+		case handshakeType_ServerKeyExchange:
 			s.Server.Identity = string(rspHs.ServerKeyExchange.GetIdentity())
 			s.handshake.state = "recv-serverkeyexchange"
-		case handshake.Type_ServerHelloDone:
+		case handshakeType_ServerHelloDone:
 			s.handshake.state = "recv-serverhellodone"
-		case handshake.Type_Finished:
+		case handshakeType_Finished:
 			var label string
-			if s.Type == TypeClient {
+			if s.Type == SessionType_Client {
 				label = "server"
 			} else {
 				label = "client"
 			}
 			if rspHs.Finished.Match(s.KeyBlock.MasterSecret, s.handshake.savedHash, label) {
-				common.LogDebug("dtls: [%s] encryption matches, handshake complete", s.peer.String())
+				logDebug("dtls: [%s] encryption matches, handshake complete", s.peer.String())
 			} else {
 				s.handshake.state = "failed"
 				err = errors.New("dtls: crypto verification failed")
@@ -217,32 +210,32 @@ func (s *Session) ProcessHandshakePacket(data []byte) error {
 			s.handshake.state = "finished"
 			break
 		}
-	case record.ContentType_ChangeCipherSpec:
+	case ContentType_ChangeCipherSpec:
 		s.decrypt = true
-		s.handshake.savedHash = s.GetHash()
+		s.handshake.savedHash = s.getHash()
 		s.handshake.state = "cipherchangespec"
 	}
 
 	if err == nil {
 		switch s.handshake.state {
 		case "recv-clienthello-initial":
-			reqHs = handshake.New(handshake.Type_HelloVerifyRequest)
+			reqHs = newHandshake(handshakeType_HelloVerifyRequest)
 			reqHs.HelloVerifyRequest.Init(s.handshake.cookie)
 			err = s.writeHandshake(reqHs)
 			if err != nil {
 				break
 			}
-			s.ResetHash()
+			s.resetHash()
 		case "recv-clienthello":
 			//TODO consider adding serverkeyexchange, not sure what to recommend as a server identity
-			reqHs = handshake.New(handshake.Type_ServerHello)
+			reqHs = newHandshake(handshakeType_ServerHello)
 			reqHs.ServerHello.Init(s.Server.Random, s.Id)
 			err = s.writeHandshake(reqHs)
 			if err != nil {
 				break
 			}
 
-			reqHs = handshake.New(handshake.Type_ServerHelloDone)
+			reqHs = newHandshake(handshakeType_ServerHelloDone)
 			reqHs.ServerHelloDone.Init()
 			err = s.writeHandshake(reqHs)
 			if err != nil {
@@ -250,23 +243,23 @@ func (s *Session) ProcessHandshakePacket(data []byte) error {
 			}
 
 		case "recv-helloverifyrequest":
-			reqHs = handshake.New(handshake.Type_ClientHello)
+			reqHs = newHandshake(handshakeType_ClientHello)
 			reqHs.ClientHello.Init(s.Client.Random, s.handshake.cookie)
 			err = s.writeHandshake(reqHs)
 			if err != nil {
 				break
 			}
 		case "recv-serverhellodone":
-			reqHs = handshake.New(handshake.Type_ClientKeyExchange)
+			reqHs = newHandshake(handshakeType_ClientKeyExchange)
 			if len(s.Server.Identity) > 0 {
-				psk := keystore.GetPsk(s.Server.Identity)
+				psk := GetPskFromKeystore(s.Server.Identity)
 				if len(psk) > 0 {
 					s.Client.Identity = s.Server.Identity
 					s.Psk = psk
 				}
 			}
 			if len(s.Psk) == 0 {
-				psk := keystore.GetPsk(s.Client.Identity)
+				psk := GetPskFromKeystore(s.Client.Identity)
 				if len(psk) > 0 {
 					s.Psk = psk
 				} else {
@@ -279,40 +272,34 @@ func (s *Session) ProcessHandshakePacket(data []byte) error {
 			if err != nil {
 				break
 			}
-			s.InitKeyBlock()
+			s.initKeyBlock()
 
-			rec := record.New(record.ContentType_ChangeCipherSpec)
-			rec.Epoch = s.GetEpoch()
-			rec.Sequence = s.GetNextSequence()
-			s.IncEpoch()
-			rec.SetData([]byte{0x01})
-			err = s.WriteRecord(rec)
+			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
+			s.incEpoch()
+			err = s.writeRecord(rec)
 			if err != nil {
 				break
 			}
 			s.encrypt = true
 
-			reqHs = handshake.New(handshake.Type_Finished)
-			reqHs.Finished.Init(s.KeyBlock.MasterSecret, s.GetHash(), "client")
+			reqHs = newHandshake(handshakeType_Finished)
+			reqHs.Finished.Init(s.KeyBlock.MasterSecret, s.getHash(), "client")
 			err = s.writeHandshake(reqHs)
 			if err != nil {
 				break
 			}
 		case "finished":
-			if s.Type == TypeServer {
-				rec := record.New(record.ContentType_ChangeCipherSpec)
-				rec.Epoch = s.GetEpoch()
-				rec.Sequence = s.GetNextSequence()
-				s.IncEpoch()
-				rec.SetData([]byte{0x01})
-				err = s.WriteRecord(rec)
+			if s.Type == SessionType_Server {
+				rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
+				s.incEpoch()
+				err = s.writeRecord(rec)
 				if err != nil {
 					break
 				}
 				s.encrypt = true
 
-				reqHs = handshake.New(handshake.Type_Finished)
-				reqHs.Finished.Init(s.KeyBlock.MasterSecret, s.GetHash(), "server")
+				reqHs = newHandshake(handshakeType_Finished)
+				reqHs.Finished.Init(s.KeyBlock.MasterSecret, s.getHash(), "server")
 				err = s.writeHandshake(reqHs)
 				if err != nil {
 					break
@@ -350,7 +337,7 @@ func (s *Session) ProcessHandshakePacket(data []byte) error {
 	}
 
 	if rem != nil {
-		return s.ProcessHandshakePacket(rem)
+		return s.processHandshakePacket(rem)
 	}
 	return nil
 }

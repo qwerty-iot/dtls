@@ -1,24 +1,21 @@
-package udp
+package dtls
 
 import (
 	"net"
 	"time"
-
-	"github.com/bocajim/dtls/common"
-	"github.com/bocajim/dtls/transport"
 )
 
-type UdpPeer struct {
+type udpPeer struct {
 	addr   *net.UDPAddr
-	handle *UdpHandle
+	handle *udpHandle
 }
 
-type UdpHandle struct {
+type udpHandle struct {
 	socket      *net.UDPConn
 	readTimeout time.Duration
 }
 
-func NewUdpHandle(listenAddress string, readTimeout time.Duration) (*UdpHandle, error) {
+func NewUdpHandle(listenAddress string, readTimeout time.Duration) (*udpHandle, error) {
 	if len(listenAddress) == 0 {
 		listenAddress = ":0"
 	}
@@ -27,7 +24,7 @@ func NewUdpHandle(listenAddress string, readTimeout time.Duration) (*UdpHandle, 
 		return nil, err
 	}
 
-	conn := &UdpHandle{readTimeout: readTimeout}
+	conn := &udpHandle{readTimeout: readTimeout}
 
 	conn.socket, err = net.ListenUDP("udp", la)
 	if err != nil {
@@ -37,15 +34,15 @@ func NewUdpHandle(listenAddress string, readTimeout time.Duration) (*UdpHandle, 
 	return conn, nil
 }
 
-func (u *UdpHandle) Type() string {
+func (u *udpHandle) Type() string {
 	return "udp"
 }
 
-func (u *UdpHandle) Local() string {
+func (u *udpHandle) Local() string {
 	return u.socket.LocalAddr().String()
 }
 
-func (u *UdpHandle) ReadPacket() ([]byte, transport.Peer, error) {
+func (u *udpHandle) ReadPacket() ([]byte, TransportPeer, error) {
 	buffer := make([]byte, 32768)
 
 	//TODO add timeout support
@@ -53,24 +50,24 @@ func (u *UdpHandle) ReadPacket() ([]byte, transport.Peer, error) {
 	for {
 		length, from, err := u.socket.ReadFromUDP(buffer)
 		if err != nil {
-			common.LogError("dtls: failed to receive packet: %s", err.Error())
+			logError("dtls: failed to receive packet: %s", err.Error())
 			return nil, nil, err
 		}
-		return buffer[:length], &UdpPeer{addr: from, handle: u}, nil
+		return buffer[:length], &udpPeer{addr: from, handle: u}, nil
 	}
 }
 
-func (p *UdpPeer) WritePacket(data []byte) error {
+func (p *udpPeer) WritePacket(data []byte) error {
 	_, err := p.handle.socket.WriteToUDP(data, p.addr)
 	return err
 }
 
-func (p *UdpPeer) String() string {
+func (p *udpPeer) String() string {
 	return p.addr.String()
 }
 
-func (p *UdpHandle) NewPeer(addr string) transport.Peer {
-	peer := &UdpPeer{}
+func (p *udpHandle) NewPeer(addr string) TransportPeer {
+	peer := &udpPeer{}
 	peer.addr, _ = net.ResolveUDPAddr("udp", addr)
 	peer.handle = p
 	return peer

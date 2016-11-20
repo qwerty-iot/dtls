@@ -1,11 +1,8 @@
-package handshake
+package dtls
 
 import (
 	"fmt"
 	"reflect"
-
-	"github.com/bocajim/dtls/common"
-	"github.com/bocajim/dtls/crypto"
 )
 
 type finished struct {
@@ -28,17 +25,17 @@ type finished struct {
 */
 
 func (h *finished) Init(masterSecret []byte, hash []byte, label string) {
-	h.data = crypto.GeneratePrf(masterSecret, []byte(" finished"), hash, label, 12)
+	h.data = generatePrf(masterSecret, []byte(" finished"), hash, label, 12)
 }
 
-func (h *finished) Parse(rdr *common.Reader) error {
+func (h *finished) Parse(rdr *byteReader) error {
 	h.data = rdr.GetBytes(12)
 
 	return nil
 }
 
 func (h *finished) Match(masterSecret []byte, hash []byte, label string) bool {
-	mac := crypto.GeneratePrf(masterSecret, []byte(" finished"), hash, label, 12)
+	mac := generatePrf(masterSecret, []byte(" finished"), hash, label, 12)
 	if reflect.DeepEqual(mac, h.data) {
 		return true
 	} else {
@@ -47,7 +44,7 @@ func (h *finished) Match(masterSecret []byte, hash []byte, label string) bool {
 }
 
 func (h *finished) Bytes() []byte {
-	w := common.NewWriter()
+	w := newByteWriter()
 	w.PutBytes(h.data)
 
 	return w.Bytes()

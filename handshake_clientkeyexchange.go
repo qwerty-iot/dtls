@@ -1,9 +1,7 @@
-package handshake
+package dtls
 
 import (
 	"fmt"
-
-	"github.com/bocajim/dtls/common"
 )
 
 type clientKeyExchange struct {
@@ -16,7 +14,7 @@ func (h *clientKeyExchange) Init(identity []byte) {
 	h.identityLen = uint16(len(h.identity))
 }
 
-func (h *clientKeyExchange) Parse(rdr *common.Reader) error {
+func (h *clientKeyExchange) Parse(rdr *byteReader) error {
 
 	h.identityLen = rdr.GetUint16()
 	if h.identityLen > 0 {
@@ -26,7 +24,7 @@ func (h *clientKeyExchange) Parse(rdr *common.Reader) error {
 }
 
 func (h *clientKeyExchange) Bytes() []byte {
-	w := common.NewWriter()
+	w := newByteWriter()
 	w.PutUint16(h.identityLen)
 	if h.identityLen > 0 {
 		w.PutBytes(h.identity)

@@ -1,22 +1,20 @@
-package handshake
+package dtls
 
 import (
 	"bytes"
 	"fmt"
-
-	"github.com/bocajim/dtls/common"
 )
 
-type HandshakeType uint8
+type handshakeType uint8
 
 const (
-	Type_ClientHello        HandshakeType = 1
-	Type_ServerHello        HandshakeType = 2
-	Type_HelloVerifyRequest HandshakeType = 3
-	Type_ServerKeyExchange  HandshakeType = 12
-	Type_ServerHelloDone    HandshakeType = 14
-	Type_ClientKeyExchange  HandshakeType = 16
-	Type_Finished           HandshakeType = 20
+	handshakeType_ClientHello        handshakeType = 1
+	handshakeType_ServerHello        handshakeType = 2
+	handshakeType_HelloVerifyRequest handshakeType = 3
+	handshakeType_ServerKeyExchange  handshakeType = 12
+	handshakeType_ServerHelloDone    handshakeType = 14
+	handshakeType_ClientKeyExchange  handshakeType = 16
+	handshakeType_Finished           handshakeType = 20
 )
 
 type CipherSuite uint16
@@ -31,16 +29,16 @@ const (
 	CompressionMethod_Null CompressionMethod = 0
 )
 
-type Payload interface {
-	Parse(rdr *common.Reader) error
+type payload interface {
+	Parse(rdr *byteReader) error
 	Bytes() []byte
 	Print() string
 	//	Init()
 }
 
-type Handshake struct {
-	Header             Header
-	Payload            Payload
+type handshake struct {
+	Header             header
+	Payload            payload
 	ClientHello        *clientHello
 	ServerHello        *serverHello
 	HelloVerifyRequest *helloVerifyRequest
@@ -51,11 +49,11 @@ type Handshake struct {
 	Unknown            *unknown
 }
 
-func (h *Handshake) Print() string {
+func (h *handshake) Print() string {
 	return fmt.Sprintf("%s ||| %s", h.Header.Print(), h.Payload.Print())
 }
 
-func (h *Handshake) Bytes() []byte {
+func (h *handshake) Bytes() []byte {
 	buf := new(bytes.Buffer)
 	payload := h.Payload.Bytes()
 	h.Header.SetLength(len(payload))
@@ -64,30 +62,30 @@ func (h *Handshake) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func New(handshakeType HandshakeType) *Handshake {
-	hs := &Handshake{}
+func newHandshake(handshakeType handshakeType) *handshake {
+	hs := &handshake{}
 	hs.Header.HandshakeType = handshakeType
 
 	switch handshakeType {
-	case Type_ClientHello:
+	case handshakeType_ClientHello:
 		hs.ClientHello = &clientHello{}
 		hs.Payload = hs.ClientHello
-	case Type_HelloVerifyRequest:
+	case handshakeType_HelloVerifyRequest:
 		hs.HelloVerifyRequest = &helloVerifyRequest{}
 		hs.Payload = hs.HelloVerifyRequest
-	case Type_ServerHello:
+	case handshakeType_ServerHello:
 		hs.ServerHello = &serverHello{}
 		hs.Payload = hs.ServerHello
-	case Type_ServerKeyExchange:
+	case handshakeType_ServerKeyExchange:
 		hs.ServerKeyExchange = &serverKeyExchange{}
 		hs.Payload = hs.ServerKeyExchange
-	case Type_ServerHelloDone:
+	case handshakeType_ServerHelloDone:
 		hs.ServerHelloDone = &serverHelloDone{}
 		hs.Payload = hs.ServerHelloDone
-	case Type_ClientKeyExchange:
+	case handshakeType_ClientKeyExchange:
 		hs.ClientKeyExchange = &clientKeyExchange{}
 		hs.Payload = hs.ClientKeyExchange
-	case Type_Finished:
+	case handshakeType_Finished:
 		hs.Finished = &finished{}
 		hs.Payload = hs.Finished
 	default:
@@ -98,41 +96,41 @@ func New(handshakeType HandshakeType) *Handshake {
 	return hs
 }
 
-func ParseHandshake(raw []byte) (*Handshake, error) {
+func parseHandshake(raw []byte) (*handshake, error) {
 
-	rdr := common.NewReader(raw)
+	rdr := newByteReader(raw)
 
-	header := Header{}
+	header := header{}
 	header.Parse(rdr)
 
-	h := New(header.HandshakeType)
+	h := newHandshake(header.HandshakeType)
 	h.Payload.Parse(rdr)
 	h.Header = header
 
 	return h, nil
 }
 
-func TypeToString(t HandshakeType) string {
+func typeToString(t handshakeType) string {
 	switch t {
-	case Type_ClientHello:
+	case handshakeType_ClientHello:
 		return "ClientHello(1)"
-	case Type_ServerHello:
+	case handshakeType_ServerHello:
 		return "ServerHello(2)"
-	case Type_HelloVerifyRequest:
+	case handshakeType_HelloVerifyRequest:
 		return "HelloVerifyRequest(3)"
-	case Type_ServerKeyExchange:
+	case handshakeType_ServerKeyExchange:
 		return "ServerKeyExchange(12)"
-	case Type_ServerHelloDone:
+	case handshakeType_ServerHelloDone:
 		return "ServerHelloDone(14)"
-	case Type_ClientKeyExchange:
+	case handshakeType_ClientKeyExchange:
 		return "ClientKeyExchange(16)"
-	case Type_Finished:
+	case handshakeType_Finished:
 		return "Finished(20)"
 	}
 	return fmt.Sprintf("Unknown(%d)", int(t))
 }
 
-func CipherSuiteToString(c CipherSuite) string {
+func cipherSuiteToString(c CipherSuite) string {
 	switch c {
 	case CipherSuite_TLS_PSK_WITH_AES_128_CCM_8:
 		return "TLS_PSK_WITH_AES_128_CCM_8(0xC0A8)"

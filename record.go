@@ -1,11 +1,9 @@
-package record
+package dtls
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-
-	"github.com/bocajim/dtls/common"
 )
 
 type ContentType uint8
@@ -15,10 +13,9 @@ const (
 	ContentType_Alert                        = 21
 	ContentType_Handshake                    = 22
 	ContentType_Appdata                      = 23
-	DtlsVersion12                uint16      = 0xFEFD
 )
 
-type Record struct {
+type record struct {
 	ContentType ContentType
 	Version     uint16
 	Epoch       uint16
@@ -27,18 +24,18 @@ type Record struct {
 	Data        []byte
 }
 
-func New(contentType ContentType) *Record {
-	return &Record{ContentType: contentType, Version: DtlsVersion12}
+func newRecord(contentType ContentType, epoch uint16, sequence uint64, data []byte) *record {
+	return &record{ContentType: contentType, Version: DtlsVersion12, Epoch: epoch, Sequence: sequence, Data: data, Length: uint16(len(data))}
 }
 
-func ParseRecord(raw []byte) (*Record, []byte, error) {
+func parseRecord(raw []byte) (*record, []byte, error) {
 
 	rawLen := len(raw)
 	if rawLen < 13 {
 		return nil, nil, errors.New("dtls: record too small")
 	}
 
-	r := &Record{}
+	r := &record{}
 	r.ContentType = ContentType(raw[0])
 	r.Version = binary.BigEndian.Uint16(raw[1:])
 	i64 := binary.BigEndian.Uint64(raw[3:])
@@ -58,13 +55,13 @@ func ParseRecord(raw []byte) (*Record, []byte, error) {
 	return r, rem, nil
 }
 
-func (r *Record) SetData(data []byte) {
+func (r *record) SetData(data []byte) {
 	r.Data = data
 	r.Length = uint16(len(data))
 }
 
-func (r *Record) Bytes() []byte {
-	w := common.NewWriter()
+func (r *record) Bytes() []byte {
+	w := newByteWriter()
 	w.PutUint8(uint8(r.ContentType))
 	w.PutUint16(r.Version)
 	w.PutUint16(r.Epoch)
@@ -74,13 +71,13 @@ func (r *Record) Bytes() []byte {
 	return w.Bytes()
 }
 
-func (r *Record) IsHandshake() bool {
+func (r *record) IsHandshake() bool {
 	if r.ContentType == ContentType_Handshake {
 		return true
 	}
 	return false
 }
 
-func (r *Record) Print() string {
+func (r *record) Print() string {
 	return fmt.Sprintf("contentType[%d] version[%X] epoch[%d] seq[%d] length[%d] data[%X]", r.ContentType, r.Version, r.Epoch, r.Sequence, r.Length, r.Data)
 }

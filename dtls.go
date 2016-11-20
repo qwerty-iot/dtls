@@ -3,15 +3,10 @@ package dtls
 import (
 	"sync"
 	"time"
-
-	"github.com/bocajim/dtls/common"
-	"github.com/bocajim/dtls/session"
-	"github.com/bocajim/dtls/transport"
-	"github.com/bocajim/dtls/transport/udp"
 )
 
 type Listener struct {
-	transport transport.Transport
+	transport Transport
 	peers     map[string]*Peer
 	readQueue chan *msg
 	mux       sync.Mutex
@@ -23,7 +18,7 @@ type msg struct {
 }
 
 func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, error) {
-	utrans, err := udp.NewUdpHandle(listener, readTimeout)
+	utrans, err := NewUdpHandle(listener, readTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -34,11 +29,11 @@ func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, erro
 }
 
 func receiver(l *Listener) {
-	common.LogInfo("[%s][%s] receiver started", l.transport.Type(), l.transport.Local())
+	logInfo("[%s][%s] receiver started", l.transport.Type(), l.transport.Local())
 	for {
 		data, peer, err := l.transport.ReadPacket()
 		if err != nil {
-			common.LogWarn("[%s][%s] failed to read packet: %s", l.transport.Type(), l.transport.Local(), err.Error())
+			logWarn("[%s][%s] failed to read packet: %s", l.transport.Type(), l.transport.Local(), err.Error())
 			break
 		}
 		l.mux.Lock()
@@ -46,23 +41,23 @@ func receiver(l *Listener) {
 		l.mux.Unlock()
 		if !found {
 			//this is where server code will go
-			common.LogInfo("[%s][%s] received from unknown peer %s", l.transport.Type(), l.transport.Local(), peer.String())
+			logInfo("[%s][%s] received from unknown peer %s", l.transport.Type(), l.transport.Local(), peer.String())
 			p, _ = l.addServerPeer(peer)
 		} else {
-			common.LogInfo("[%s][%s] received from peer %s", l.transport.Type(), l.transport.Local(), peer.String())
+			logInfo("[%s][%s] received from peer %s", l.transport.Type(), l.transport.Local(), peer.String())
 		}
-		if !p.session.IsHandshakeDone() {
-			if err := p.session.ProcessHandshakePacket(data); err != nil {
-				if p.session.Type == session.TypeServer {
+		if !p.session.isHandshakeDone() {
+			if err := p.session.processHandshakePacket(data); err != nil {
+				if p.session.Type == SessionType_Server {
 					l.mux.Lock()
 					delete(l.peers, peer.String())
 					l.mux.Unlock()
 				}
-				common.LogWarn("[%s][%s] failed to complete handshake for %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), err.Error())
+				logWarn("[%s][%s] failed to complete handshake for %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), err.Error())
 			}
 		} else {
 			for {
-				rec, rem, err := p.session.ParseRecord(data)
+				rec, rem, err := p.session.parseRecord(data)
 				if err == nil {
 					if p.queue != nil {
 						p.queue <- rec.Data
@@ -71,7 +66,7 @@ func receiver(l *Listener) {
 					}
 					//TODO handle case where queue is full and not being read
 				} else {
-					common.LogWarn("[%s][%s] failed to decrypt packet from %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), err.Error())
+					logWarn("[%s][%s] failed to decrypt packet from %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), err.Error())
 				}
 				if rem == nil {
 					return
@@ -82,12 +77,12 @@ func receiver(l *Listener) {
 		}
 
 	}
-	common.LogInfo("[%s][%s] receiver stopped", l.transport.Type(), l.transport.Local())
+	logInfo("[%s][%s] receiver stopped", l.transport.Type(), l.transport.Local())
 }
 
-func (l *Listener) addServerPeer(tpeer transport.Peer) (*Peer, error) {
+func (l *Listener) addServerPeer(tpeer TransportPeer) (*Peer, error) {
 	peer := &Peer{peer: tpeer}
-	peer.session = session.NewServerSession(peer.peer)
+	peer.session = newServerSession(peer.peer)
 	l.mux.Lock()
 	l.peers[peer.peer.String()] = peer
 	l.mux.Unlock()
@@ -107,13 +102,13 @@ func (l *Listener) AddPeer(addr string, identity string) (*Peer, error) {
 func (l *Listener) AddPeerParams(params *PeerParams) (*Peer, error) {
 	peer := &Peer{peer: l.transport.NewPeer(params.Addr)}
 	peer.UseQueue(true)
-	peer.session = session.NewClientSession(peer.peer)
+	peer.session = newClientSession(peer.peer)
 	peer.session.Client.Identity = params.Identity
 	l.mux.Lock()
 	l.peers[peer.peer.String()] = peer
 	l.mux.Unlock()
-	peer.session.StartHandshake()
-	if err := peer.session.WaitForHandshake(params.HandshakeTimeout); err != nil {
+	peer.session.startHandshake()
+	if err := peer.session.waitForHandshake(params.HandshakeTimeout); err != nil {
 		l.mux.Lock()
 		delete(l.peers, peer.peer.String())
 		l.mux.Unlock()

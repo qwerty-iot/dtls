@@ -1,8 +1,4 @@
-package handshake
-
-import (
-	"github.com/bocajim/dtls/common"
-)
+package dtls
 
 type serverHelloDone struct {
 }
@@ -11,7 +7,7 @@ func (h *serverHelloDone) Init() {
 	return
 }
 
-func (h *serverHelloDone) Parse(rdr *common.Reader) error {
+func (h *serverHelloDone) Parse(rdr *byteReader) error {
 	return nil
 }
 
