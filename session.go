@@ -2,7 +2,6 @@ package dtls
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
 	"hash"
 	"time"
 )
@@ -39,12 +38,15 @@ type session struct {
 		err       error
 		done      chan error
 	}
-	encrypt bool
-	decrypt bool
+	cipherSuites       []CipherSuite
+	compressionMethods []CompressionMethod
+	encrypt            bool
+	decrypt            bool
 }
 
 func newClientSession(peer TransportPeer) *session {
-	session := &session{Type: SessionType_Client, peer: peer, hash: sha256.New()}
+	session := &session{Type: SessionType_Client, peer: peer, hash: sha256.New(),
+		cipherSuites: []CipherSuite{CipherSuite_TLS_PSK_WITH_AES_128_CCM_8}, compressionMethods: []CompressionMethod{CompressionMethod_Null}}
 	session.handshake.done = make(chan error)
 	session.Client.RandomTime = time.Now()
 	randBytes := randomBytes(28)
@@ -58,7 +60,8 @@ func newClientSession(peer TransportPeer) *session {
 }
 
 func newServerSession(peer TransportPeer) *session {
-	session := &session{Type: SessionType_Server, peer: peer, hash: sha256.New(), Id: randomBytes(32)}
+	session := &session{Type: SessionType_Server, peer: peer, hash: sha256.New(), Id: randomBytes(32),
+		cipherSuites: []CipherSuite{CipherSuite_TLS_PSK_WITH_AES_128_CCM_8}, compressionMethods: []CompressionMethod{CompressionMethod_Null}}
 	session.handshake.done = make(chan error)
 	session.Server.RandomTime = time.Now()
 	randBytes := randomBytes(28)
@@ -110,18 +113,6 @@ func (s *session) initKeyBlock() error {
 
 	logDebug("dtls: [%s] %s", s.peer.String(), s.KeyBlock.Print())
 	return err
-}
-
-func (s *session) initSecurity(clientId, serverId, psk string) {
-	if len(clientId) > 0 {
-		s.Client.Identity = clientId
-	}
-	if len(serverId) > 0 {
-		s.Server.Identity = serverId
-	}
-	if len(psk) > 0 {
-		s.Psk, _ = hex.DecodeString(psk)
-	}
 }
 
 func (s *session) isHandshakeDone() bool {

@@ -20,7 +20,7 @@ type clientHello struct {
 	compressionMethods    []CompressionMethod
 }
 
-func (h *clientHello) Init(randomBytes []byte, cookie []byte) {
+func (h *clientHello) Init(randomBytes []byte, cookie []byte, cipherSuites []CipherSuite, compressionMethods []CompressionMethod) {
 	h.version = DtlsVersion12
 	h.randomBytes = randomBytes
 	h.randomTime = binary.BigEndian.Uint32(h.randomBytes[:4])
@@ -28,10 +28,10 @@ func (h *clientHello) Init(randomBytes []byte, cookie []byte) {
 		h.cookie = cookie
 		h.cookieLen = uint8(len(cookie))
 	}
-	h.cipherSuitesLen = 2
-	h.cipherSuites = []CipherSuite{CipherSuite_TLS_PSK_WITH_AES_128_CCM_8}
-	h.compressionMethodsLen = 1
-	h.compressionMethods = []CompressionMethod{CompressionMethod_Null}
+	h.cipherSuitesLen = uint16(len(cipherSuites) * 2)
+	h.cipherSuites = cipherSuites
+	h.compressionMethodsLen = uint8(len(compressionMethods))
+	h.compressionMethods = compressionMethods
 }
 
 func (h *clientHello) Parse(rdr *byteReader) error {
@@ -112,4 +112,12 @@ func (h *clientHello) GetRandom() (time.Time, []byte) {
 
 func (h *clientHello) GetCookie() []byte {
 	return h.cookie
+}
+
+func (h *clientHello) GetCipherSuites() []CipherSuite {
+	return h.cipherSuites
+}
+
+func (h *clientHello) GetCompressionMethods() []CompressionMethod {
+	return h.compressionMethods
 }

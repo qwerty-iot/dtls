@@ -6,10 +6,12 @@ import (
 )
 
 type Listener struct {
-	transport Transport
-	peers     map[string]*Peer
-	readQueue chan *msg
-	mux       sync.Mutex
+	transport          Transport
+	peers              map[string]*Peer
+	readQueue          chan *msg
+	mux                sync.Mutex
+	cipherSuites       []CipherSuite
+	compressionMethods []CompressionMethod
 }
 
 type msg struct {
@@ -18,7 +20,7 @@ type msg struct {
 }
 
 func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, error) {
-	utrans, err := NewUdpHandle(listener, readTimeout)
+	utrans, err := newUdpHandle(listener, readTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +85,12 @@ func receiver(l *Listener) {
 func (l *Listener) addServerPeer(tpeer TransportPeer) (*Peer, error) {
 	peer := &Peer{peer: tpeer}
 	peer.session = newServerSession(peer.peer)
+	if l.cipherSuites != nil {
+		peer.session.cipherSuites = l.cipherSuites
+	}
+	if l.compressionMethods != nil {
+		peer.session.compressionMethods = l.compressionMethods
+	}
 	l.mux.Lock()
 	l.peers[peer.peer.String()] = peer
 	l.mux.Unlock()
@@ -96,13 +104,19 @@ type PeerParams struct {
 }
 
 func (l *Listener) AddPeer(addr string, identity string) (*Peer, error) {
-	return l.AddPeerParams(&PeerParams{Addr: addr, Identity: identity, HandshakeTimeout: time.Second * 20})
+	return l.AddPeerWithParams(&PeerParams{Addr: addr, Identity: identity, HandshakeTimeout: time.Second * 20})
 }
 
-func (l *Listener) AddPeerParams(params *PeerParams) (*Peer, error) {
+func (l *Listener) AddPeerWithParams(params *PeerParams) (*Peer, error) {
 	peer := &Peer{peer: l.transport.NewPeer(params.Addr)}
 	peer.UseQueue(true)
 	peer.session = newClientSession(peer.peer)
+	if l.cipherSuites != nil {
+		peer.session.cipherSuites = l.cipherSuites
+	}
+	if l.compressionMethods != nil {
+		peer.session.compressionMethods = l.compressionMethods
+	}
 	peer.session.Client.Identity = params.Identity
 	l.mux.Lock()
 	l.peers[peer.peer.String()] = peer
@@ -121,4 +135,20 @@ func (l *Listener) Read() ([]byte, *Peer) {
 	msg := <-l.readQueue
 
 	return msg.data, msg.peer
+}
+
+func (l *Listener) AddCipherSuite(cipherSuite CipherSuite) {
+	if l.cipherSuites == nil {
+		l.cipherSuites = make([]CipherSuite, 0, 4)
+	}
+	l.cipherSuites = append(l.cipherSuites, cipherSuite)
+	return
+}
+
+func (l *Listener) AddCompressionMethod(compressionMethod CompressionMethod) {
+	if l.compressionMethods == nil {
+		l.compressionMethods = make([]CompressionMethod, 0, 4)
+	}
+	l.compressionMethods = append(l.compressionMethods, compressionMethod)
+	return
 }

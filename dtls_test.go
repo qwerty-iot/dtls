@@ -21,9 +21,11 @@ type DtlsSuite struct{}
 func (s *DtlsSuite) SetUpSuite(c *C) {
 	var err error
 
-	LogLevelSet("debug")
+	SetLogLevel("debug")
 
 	server, err = NewUdpListener(":5684", time.Second*5)
+	server.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
+	server.AddCompressionMethod(CompressionMethod_Null)
 	c.Assert(server, NotNil)
 	c.Assert(err, IsNil)
 
@@ -88,11 +90,11 @@ func (s *DtlsSuite) TestSimple(c *C) {
 
 func (s *DtlsSuite) TestFailedClient(c *C) {
 
-	peer, err := client.AddPeerParams(&PeerParams{Addr: "127.0.0.1:5687", Identity: "myIdentity", HandshakeTimeout: time.Second * 5})
+	peer, err := client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5687", Identity: "myIdentity", HandshakeTimeout: time.Second * 5})
 	c.Assert(peer, IsNil)
 	c.Assert(err.Error(), Equals, "dtls: timed out waiting for handshake to complete")
 
-	peer, err = client.AddPeerParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: "xxx", HandshakeTimeout: time.Second * 5})
+	peer, err = client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: "xxx", HandshakeTimeout: time.Second * 5})
 	c.Assert(peer, IsNil)
 	c.Assert(err.Error(), Equals, "dtls: no psk could be found")
 }

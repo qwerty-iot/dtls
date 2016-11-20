@@ -93,7 +93,7 @@ func (s *HandshakeSuite) TestClientHelloEncode(c *C) {
 	cookie := randomBytes(16)
 
 	hs := newHandshake(handshakeType_ClientHello)
-	hs.ClientHello.Init(w.Bytes(), cookie)
+	hs.ClientHello.Init(w.Bytes(), cookie, []CipherSuite{CipherSuite_TLS_PSK_WITH_AES_128_CCM_8}, []CompressionMethod{CompressionMethod_Null})
 	hs.ClientHello.sessionId = randomBytes(24)
 	hs.ClientHello.sessionIdLen = 24
 	hsbytes := hs.Bytes()
@@ -116,6 +116,8 @@ func (s *HandshakeSuite) TestClientHelloEncode(c *C) {
 	c.Assert(hex.EncodeToString(handshake.ClientHello.sessionId), Equals, hex.EncodeToString(hs.ClientHello.sessionId))
 	c.Assert(hex.EncodeToString(handshake.ClientHello.cookie), Equals, hex.EncodeToString(cookie))
 	c.Assert(handshake.ClientHello.cipherSuites[0], Equals, CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
+	c.Assert(handshake.ClientHello.GetCipherSuites(), DeepEquals, []CipherSuite{CipherSuite_TLS_PSK_WITH_AES_128_CCM_8})
+	c.Assert(handshake.ClientHello.GetCompressionMethods(), DeepEquals, []CompressionMethod{CompressionMethod_Null})
 }
 
 func (s *HandshakeSuite) TestHelloVerifyRequestDecode(c *C) {

@@ -106,7 +106,7 @@ func (s *session) generateCookie() {
 
 func (s *session) startHandshake() error {
 	reqHs := newHandshake(handshakeType_ClientHello)
-	reqHs.ClientHello.Init(s.Client.Random, nil)
+	reqHs.ClientHello.Init(s.Client.Random, nil, s.cipherSuites, s.compressionMethods)
 
 	err := s.writeHandshake(reqHs)
 	if err != nil {
@@ -244,7 +244,7 @@ func (s *session) processHandshakePacket(data []byte) error {
 
 		case "recv-helloverifyrequest":
 			reqHs = newHandshake(handshakeType_ClientHello)
-			reqHs.ClientHello.Init(s.Client.Random, s.handshake.cookie)
+			reqHs.ClientHello.Init(s.Client.Random, s.handshake.cookie, s.cipherSuites, s.compressionMethods)
 			err = s.writeHandshake(reqHs)
 			if err != nil {
 				break

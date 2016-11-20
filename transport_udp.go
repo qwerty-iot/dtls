@@ -15,7 +15,7 @@ type udpHandle struct {
 	readTimeout time.Duration
 }
 
-func NewUdpHandle(listenAddress string, readTimeout time.Duration) (*udpHandle, error) {
+func newUdpHandle(listenAddress string, readTimeout time.Duration) (*udpHandle, error) {
 	if len(listenAddress) == 0 {
 		listenAddress = ":0"
 	}
