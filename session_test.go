@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+
+	. "gopkg.in/check.v1"
 )
 
 type nilPeer struct {
@@ -16,7 +18,16 @@ func (p *nilPeer) WritePacket(data []byte) error {
 	return nil
 }
 
-func TestNewClient(t *testing.T) {
+func SessionTest(t *testing.T) { TestingT(t) }
+
+var _ = Suite(&SessionSuite{})
+
+type SessionSuite struct{}
+
+func (s *SessionSuite) SetUpSuite(c *C) {
+}
+
+func (s *SessionSuite) TestTypeToString(c *C) {
 
 	peer := newClientSession(&nilPeer{})
 	peer.Client.Identity = "Identity"
@@ -27,18 +38,10 @@ func TestNewClient(t *testing.T) {
 
 	peer.initKeyBlock()
 
-	t.Logf("KeyBlock: %s", peer.KeyBlock.Print())
+	peer.KeyBlock.Print()
 
-	if strings.ToUpper(hex.EncodeToString(peer.KeyBlock.ClientWriteKey)) != "CE3DB22CD0931C3E752176B43EB1939A" {
-		t.Errorf("ClientWriteKey mismatch [%X] != [CE3DB22CD0931C3E752176B43EB1939A]", peer.KeyBlock.ClientWriteKey)
-	}
-	if strings.ToUpper(hex.EncodeToString(peer.KeyBlock.ServerWriteKey)) != "3501B84CF54E2654090E82ABEFCDCCBD" {
-		t.Errorf("ServerWriteKey mismatch [%X] != [3501B84CF54E2654090E82ABEFCDCCBD]", peer.KeyBlock.ServerWriteKey)
-	}
-	if strings.ToUpper(hex.EncodeToString(peer.KeyBlock.ClientIV)) != "F21CE4E5" {
-		t.Errorf("ClientIV mismatch [%X] != [F21CE4E5]", peer.KeyBlock.ClientIV)
-	}
-	if strings.ToUpper(hex.EncodeToString(peer.KeyBlock.ServerIV)) != "235A077A" {
-		t.Errorf("ServerIV mismatch [%X] != [235A077A]", peer.KeyBlock.ServerIV)
-	}
+	c.Assert(strings.ToUpper(hex.EncodeToString(peer.KeyBlock.ClientWriteKey)), Equals, "CE3DB22CD0931C3E752176B43EB1939A")
+	c.Assert(strings.ToUpper(hex.EncodeToString(peer.KeyBlock.ServerWriteKey)), Equals, "3501B84CF54E2654090E82ABEFCDCCBD")
+	c.Assert(strings.ToUpper(hex.EncodeToString(peer.KeyBlock.ClientIV)), Equals, "F21CE4E5")
+	c.Assert(strings.ToUpper(hex.EncodeToString(peer.KeyBlock.ServerIV)), Equals, "235A077A")
 }

@@ -3,8 +3,6 @@ package dtls
 import (
 	"errors"
 	"time"
-
-	"github.com/bocajim/dtls/alert"
 )
 
 type Peer struct {
@@ -26,7 +24,7 @@ func (p *Peer) UseQueue(en bool) {
 }
 
 func (p *Peer) Close() {
-	rec := newRecord(ContentType_Alert, p.session.getEpoch(), p.session.getNextSequence(), alert.New(alert.TypeFatal, alert.DescCloseNotify).Bytes())
+	rec := newRecord(ContentType_Alert, p.session.getEpoch(), p.session.getNextSequence(), newAlert(AlertType_Fatal, AlertDesc_CloseNotify).Bytes())
 	p.session.writeRecord(rec)
 }
 
