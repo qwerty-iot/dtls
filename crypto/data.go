@@ -2,12 +2,14 @@ package crypto
 
 import (
 	"crypto/aes"
+	"errors"
 
 	"github.com/bocajim/dtls/common"
 	"github.com/bocajim/dtls/crypto/ccm"
 )
 
 func PayloadEncrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string) ([]byte, error) {
+
 	cipher, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -28,6 +30,9 @@ func PayloadEncrypt(data []byte, nonce []byte, key []byte, aad []byte, peer stri
 	}
 	cipherText := make([]byte, 0, cipherTextLen)
 
+	if len(nonce) != 12 {
+		return nil, errors.New("dtls: invalid nonce length")
+	}
 	cipherText = ccmCipher.Seal(cipherText, nonce, data, aad)
 	if len(peer) > 0 {
 		common.LogDebug("dtls: [%s] encrypt cipherText[%X][%d]", peer, cipherText, len(cipherText))

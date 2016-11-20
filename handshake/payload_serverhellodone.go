@@ -8,6 +8,7 @@ type serverHelloDone struct {
 }
 
 func (h *serverHelloDone) Init() {
+	return
 }
 
 func (h *serverHelloDone) Parse(rdr *common.Reader) error {

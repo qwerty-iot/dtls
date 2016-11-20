@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/bocajim/dtls/alert"
 	"github.com/bocajim/dtls/record"
 	"github.com/bocajim/dtls/session"
 	"github.com/bocajim/dtls/transport"
@@ -25,6 +26,14 @@ func (p *Peer) UseQueue(en bool) {
 			close(q)
 		}
 	}
+}
+
+func (p *Peer) Close() {
+	rec := record.New(record.ContentType_Alert)
+	rec.Epoch = p.session.GetEpoch()
+	rec.Sequence = p.session.GetNextSequence()
+	rec.SetData(alert.New(alert.TypeFatal, alert.DescCloseNotify).Bytes())
+	p.session.WriteRecord(rec)
 }
 
 func (p *Peer) Write(data []byte) error {

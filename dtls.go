@@ -48,6 +48,8 @@ func receiver(l *Listener) {
 			//this is where server code will go
 			common.LogInfo("[%s][%s] received from unknown peer %s", l.transport.Type(), l.transport.Local(), peer.String())
 			p, _ = l.addServerPeer(peer)
+		} else {
+			common.LogInfo("[%s][%s] received from peer %s", l.transport.Type(), l.transport.Local(), peer.String())
 		}
 		if !p.session.IsHandshakeDone() {
 			if err := p.session.ProcessHandshakePacket(data); err != nil {
@@ -92,16 +94,26 @@ func (l *Listener) addServerPeer(tpeer transport.Peer) (*Peer, error) {
 	return peer, nil
 }
 
+type PeerParams struct {
+	Addr             string
+	Identity         string
+	HandshakeTimeout time.Duration
+}
+
 func (l *Listener) AddPeer(addr string, identity string) (*Peer, error) {
-	peer := &Peer{peer: l.transport.NewPeer(addr)}
+	return l.AddPeerParams(&PeerParams{Addr: addr, Identity: identity, HandshakeTimeout: time.Second * 20})
+}
+
+func (l *Listener) AddPeerParams(params *PeerParams) (*Peer, error) {
+	peer := &Peer{peer: l.transport.NewPeer(params.Addr)}
 	peer.UseQueue(true)
 	peer.session = session.NewClientSession(peer.peer)
-	peer.session.Client.Identity = identity
+	peer.session.Client.Identity = params.Identity
 	l.mux.Lock()
 	l.peers[peer.peer.String()] = peer
 	l.mux.Unlock()
 	peer.session.StartHandshake()
-	if err := peer.session.WaitForHandshake(time.Second * 30); err != nil {
+	if err := peer.session.WaitForHandshake(params.HandshakeTimeout); err != nil {
 		l.mux.Lock()
 		delete(l.peers, peer.peer.String())
 		l.mux.Unlock()

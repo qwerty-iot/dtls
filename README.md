@@ -27,6 +27,13 @@ dtls/handshake | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/h
 dtls/record | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/record)](http://gocover.io/github.com/bocajim/dtls/record)
 dtls/session | [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls/session)](http://gocover.io/github.com/bocajim/dtls/session)
 
+TODO
+----
+* Implement alerting on key failures
+* Implement session renegotiation
+* Implement packet retransmission for handshake
+* Implement out of order handshake processing
+* Implement replay detection
 
 Samples
 -------
@@ -46,7 +53,6 @@ Sample Client
 	err = peer.Write("hello world")
 	data, rsp := listener.Read()
 ```
-
 
 Documentation
 -------------

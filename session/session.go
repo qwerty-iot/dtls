@@ -40,7 +40,8 @@ type Session struct {
 		cookie    []byte
 		savedHash []byte
 		seq       uint16
-		done      chan bool
+		err       error
+		done      chan error
 	}
 	encrypt bool
 	decrypt bool
@@ -48,6 +49,7 @@ type Session struct {
 
 func NewClientSession(peer transport.Peer) *Session {
 	session := &Session{Type: TypeClient, peer: peer, hash: sha256.New()}
+	session.handshake.done = make(chan error)
 	session.Client.RandomTime = time.Now()
 	randBytes := common.RandomBytes(28)
 
@@ -61,6 +63,7 @@ func NewClientSession(peer transport.Peer) *Session {
 
 func NewServerSession(peer transport.Peer) *Session {
 	session := &Session{Type: TypeServer, peer: peer, hash: sha256.New(), Id: common.RandomBytes(32)}
+	session.handshake.done = make(chan error)
 	session.Server.RandomTime = time.Now()
 	randBytes := common.RandomBytes(28)
 

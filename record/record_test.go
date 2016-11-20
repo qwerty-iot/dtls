@@ -94,3 +94,45 @@ func (s *RecordSuite) TestMultiRecordDecode(c *C) {
 	c.Assert(rec.IsHandshake(), Equals, true)
 
 }
+
+func (s *RecordSuite) TestIsHandshake(c *C) {
+	newRec := New(ContentType_Handshake)
+	newRec.Epoch = 1
+	newRec.Sequence = 22
+
+	data := common.RandomBytes(40)
+	newRec.SetData(data)
+
+	rec, _, _ := ParseRecord(newRec.Bytes())
+	c.Assert(rec.IsHandshake(), Equals, true)
+
+	newRec = New(ContentType_Appdata)
+	newRec.Epoch = 1
+	newRec.Sequence = 22
+
+	data = common.RandomBytes(40)
+	newRec.SetData(data)
+
+	rec, _, _ = ParseRecord(newRec.Bytes())
+	c.Assert(rec.IsHandshake(), Equals, false)
+}
+
+func (s *RecordSuite) TestPrint(c *C) {
+	newRec := New(ContentType_Handshake)
+	newRec.Epoch = 1
+	newRec.Sequence = 22
+
+	rec, _, _ := ParseRecord(newRec.Bytes())
+	c.Assert(rec.Print(), Equals, "contentType[22] version[FEFD] epoch[1] seq[22] length[0] data[]")
+}
+
+func (s *RecordSuite) TestUnderflow(c *C) {
+	newRec := New(ContentType_Handshake)
+	newRec.Epoch = 1
+	newRec.Sequence = 22
+
+	data := newRec.Bytes()
+
+	_, _, err := ParseRecord(data[:10])
+	c.Assert(err, NotNil)
+}

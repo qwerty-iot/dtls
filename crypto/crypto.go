@@ -46,14 +46,8 @@ func (kb *KeyBlock) Print() string {
 
 func CreateKeyBlock(identity []byte, psk, clientRandom, serverRandom []byte) (*KeyBlock, error) {
 
-	//find PSK based on identity
-	//psk := hackedPsk
-
 	//generate pre-master secret
-	preMasterSecret, err := generatePskPreMasterSecret(psk)
-	if err != nil {
-		return nil, err
-	}
+	preMasterSecret := generatePskPreMasterSecret(psk)
 
 	//generate master secret
 	masterSecret := GeneratePrf(preMasterSecret, clientRandom, serverRandom, "master secret", 48)
@@ -67,7 +61,7 @@ func CreateKeyBlock(identity []byte, psk, clientRandom, serverRandom []byte) (*K
 }
 
 //dtls_psk_pre_master_secret(unsigned char *key, size_t keylen,unsigned char *result, size_t result_len)
-func generatePskPreMasterSecret(psk []byte) ([]byte, error) {
+func generatePskPreMasterSecret(psk []byte) []byte {
 
 	zeroBuffer := make([]byte, len(psk))
 
@@ -78,16 +72,9 @@ func generatePskPreMasterSecret(psk []byte) ([]byte, error) {
 	w.PutUint16(uint16(len(psk)))
 	w.PutBytes(psk)
 
-	return w.Bytes(), nil
+	return w.Bytes()
 }
 
-/*  dtls_prf(pre_master_secret, pre_master_len,
-PRF_LABEL(master), PRF_LABEL_SIZE(master),
-handshake->tmp.random.client, DTLS_RANDOM_LENGTH,
-handshake->tmp.random.server, DTLS_RANDOM_LENGTH,
-master_secret,
-DTLS_MASTER_SECRET_LENGTH);
-*/
 func GeneratePrf(key, random1, random2 []byte, label string, keyLen int) []byte {
 
 	buf := make([]byte, 0, keyLen)

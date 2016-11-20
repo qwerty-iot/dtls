@@ -115,8 +115,6 @@ func (s *Session) StartHandshake() error {
 	reqHs := handshake.New(handshake.Type_ClientHello)
 	reqHs.ClientHello.Init(s.Client.Random, nil)
 
-	s.handshake.done = make(chan bool)
-
 	err := s.writeHandshake(reqHs)
 	if err != nil {
 		return err
@@ -129,11 +127,11 @@ func (s *Session) WaitForHandshake(timeout time.Duration) error {
 		return errors.New("dtls: handshake not in-progress")
 	}
 	select {
-	case <-s.handshake.done:
+	case err := <-s.handshake.done:
 		if s.handshake.state == "finished" {
 			return nil
 		} else {
-			return errors.New("dtls: handshake failed while in state [" + s.handshake.state + "]")
+			return err
 		}
 	case <-time.After(timeout):
 		return errors.New("dtls: timed out waiting for handshake to complete")
@@ -176,9 +174,6 @@ func (s *Session) ProcessHandshakePacket(data []byte) error {
 				s.handshake.state = "recv-helloverifyrequest"
 			} else {
 				s.handshake.state = "failed"
-				if s.handshake.done != nil {
-					s.handshake.done <- true
-				}
 				err = errors.New("dtls: received hello verify request, but already have cookie")
 				break
 			}
@@ -216,9 +211,6 @@ func (s *Session) ProcessHandshakePacket(data []byte) error {
 				common.LogDebug("dtls: [%s] encryption matches, handshake complete", s.peer.String())
 			} else {
 				s.handshake.state = "failed"
-				if s.handshake.done != nil {
-					s.handshake.done <- true
-				}
 				err = errors.New("dtls: crypto verification failed")
 				break
 			}
@@ -331,13 +323,30 @@ func (s *Session) ProcessHandshakePacket(data []byte) error {
 
 	if err != nil {
 		s.handshake.state = "failed"
-		if s.handshake.done != nil {
-			s.handshake.done <- true
+		s.handshake.err = err
+	FORERR:
+		for {
+			select {
+			case s.handshake.done <- err:
+				continue
+			default:
+				break FORERR
+			}
 		}
 		return err
+	} else {
+		s.handshake.err = nil
 	}
-	if s.handshake.state == "finished" && s.handshake.done != nil {
-		s.handshake.done <- true
+	if s.handshake.state == "finished" {
+	FORFIN:
+		for {
+			select {
+			case s.handshake.done <- nil:
+				continue
+			default:
+				break FORFIN
+			}
+		}
 	}
 
 	if rem != nil {

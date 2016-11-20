@@ -48,6 +48,7 @@ type Handshake struct {
 	ServerHelloDone    *serverHelloDone
 	ClientKeyExchange  *clientKeyExchange
 	Finished           *finished
+	Unknown            *unknown
 }
 
 func (h *Handshake) Print() string {
@@ -89,6 +90,9 @@ func New(handshakeType HandshakeType) *Handshake {
 	case Type_Finished:
 		hs.Finished = &finished{}
 		hs.Payload = hs.Finished
+	default:
+		hs.Unknown = &unknown{}
+		hs.Payload = hs.Unknown
 	}
 
 	return hs

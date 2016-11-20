@@ -1,16 +1,17 @@
 package handshake
 
 import (
-	"io"
+	"github.com/bocajim/dtls/common"
 )
 
 type unknown struct {
 }
 
 func (h *unknown) Init() {
+	return
 }
 
-func (h *unknown) Parse(rdr io.Reader) error {
+func (h *unknown) Parse(rdr *common.Reader) error {
 	return nil
 }
 
