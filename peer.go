@@ -23,6 +23,10 @@ func (p *Peer) UseQueue(en bool) {
 	}
 }
 
+func (p *Peer) RemoteAddr() string {
+	return p.peer.String()
+}
+
 func (p *Peer) Close() {
 	rec := newRecord(ContentType_Alert, p.session.getEpoch(), p.session.getNextSequence(), newAlert(AlertType_Fatal, AlertDesc_CloseNotify).Bytes())
 	p.session.writeRecord(rec)

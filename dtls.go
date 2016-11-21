@@ -20,7 +20,7 @@ type msg struct {
 }
 
 func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, error) {
-	utrans, err := newUdpHandle(listener, readTimeout)
+	utrans, err := newUdpTransport(listener, readTimeout)
 	if err != nil {
 		return nil, err
 	}

@@ -7,15 +7,15 @@ import (
 
 type udpPeer struct {
 	addr   *net.UDPAddr
-	handle *udpHandle
+	handle *udpTransport
 }
 
-type udpHandle struct {
+type udpTransport struct {
 	socket      *net.UDPConn
 	readTimeout time.Duration
 }
 
-func newUdpHandle(listenAddress string, readTimeout time.Duration) (*udpHandle, error) {
+func newUdpTransport(listenAddress string, readTimeout time.Duration) (*udpTransport, error) {
 	if len(listenAddress) == 0 {
 		listenAddress = ":0"
 	}
@@ -24,7 +24,7 @@ func newUdpHandle(listenAddress string, readTimeout time.Duration) (*udpHandle, 
 		return nil, err
 	}
 
-	conn := &udpHandle{readTimeout: readTimeout}
+	conn := &udpTransport{readTimeout: readTimeout}
 
 	conn.socket, err = net.ListenUDP("udp", la)
 	if err != nil {
@@ -34,15 +34,15 @@ func newUdpHandle(listenAddress string, readTimeout time.Duration) (*udpHandle, 
 	return conn, nil
 }
 
-func (u *udpHandle) Type() string {
+func (u *udpTransport) Type() string {
 	return "udp"
 }
 
-func (u *udpHandle) Local() string {
+func (u *udpTransport) Local() string {
 	return u.socket.LocalAddr().String()
 }
 
-func (u *udpHandle) ReadPacket() ([]byte, TransportPeer, error) {
+func (u *udpTransport) ReadPacket() ([]byte, TransportPeer, error) {
 	buffer := make([]byte, 32768)
 
 	//TODO add timeout support
@@ -66,9 +66,13 @@ func (p *udpPeer) String() string {
 	return p.addr.String()
 }
 
-func (p *udpHandle) NewPeer(addr string) TransportPeer {
+func (p *udpTransport) NewPeer(addr string) TransportPeer {
 	peer := &udpPeer{}
 	peer.addr, _ = net.ResolveUDPAddr("udp", addr)
 	peer.handle = p
 	return peer
+}
+
+func NewUdpPeerFromSocket(socket *net.UDPConn, addr *net.UDPAddr) TransportPeer {
+	return &udpPeer{addr: addr, handle: &udpTransport{socket: socket}}
 }

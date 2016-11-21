@@ -18,6 +18,10 @@ type LogFunc func(ts time.Time, level string, msg string)
 var logFunc LogFunc = defaultLogFunc
 var logLevel int = 0
 
+func SetLogFunc(lf LogFunc) {
+	logFunc = lf
+}
+
 func SetLogLevel(level string) {
 	switch level {
 	case LogLevelError:

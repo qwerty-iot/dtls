@@ -19,20 +19,20 @@ func GetPskFromKeystore(identity string) []byte {
 	return nil
 }
 
-type keystoreInMemory struct {
+type KeystoreInMemory struct {
 	keys map[string][]byte
 }
 
-func NewKeystoreInMemory() *keystoreInMemory {
-	return &keystoreInMemory{keys: make(map[string][]byte)}
+func NewKeystoreInMemory() *KeystoreInMemory {
+	return &KeystoreInMemory{keys: make(map[string][]byte)}
 }
 
-func (ks *keystoreInMemory) AddKey(identity string, psk []byte) {
+func (ks *KeystoreInMemory) AddKey(identity string, psk []byte) {
 	ks.keys[identity] = psk
 	return
 }
 
-func (ks *keystoreInMemory) GetPsk(identity string) []byte {
+func (ks *KeystoreInMemory) GetPsk(identity string) []byte {
 	psk, found := ks.keys[identity]
 	if !found {
 		return nil
