@@ -1,6 +1,7 @@
 package dtls
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"time"
@@ -120,4 +121,20 @@ func (h *clientHello) GetCipherSuites() []CipherSuite {
 
 func (h *clientHello) GetCompressionMethods() []CompressionMethod {
 	return h.compressionMethods
+}
+
+func (h *clientHello) MakeCookie(seed []byte) []byte {
+	hash := sha256.New()
+	hash.Write(seed)
+	hash.Write(h.randomBytes)
+	for _, cs := range h.cipherSuites {
+		buf := make([]byte, 2)
+		buf[0] = byte(cs & 0xFF)
+		buf[1] = byte(cs & 0xFF00 >> 8)
+		hash.Write(buf)
+	}
+	for _, cm := range h.compressionMethods {
+		hash.Write([]byte{byte(cm)})
+	}
+	return hash.Sum(nil)
 }

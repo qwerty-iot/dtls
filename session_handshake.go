@@ -14,7 +14,7 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		return nil, nil, err
 	}
 
-	logDebug("dtls: [%s] read %s", s.peer.String(), rec.Print())
+	logDebug("dtls: [%s] read %s (%d rem)", s.peer.String(), rec.Print(), len(rem))
 
 	if s.decrypt {
 		var iv []byte

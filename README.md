@@ -24,6 +24,8 @@ TODO
 * Implement packet retransmission for handshake
 * Implement out of order handshake processing
 * Implement replay detection
+* Implement client hello stateless cookie handling
+* Improve parallel processing of incoming packets
 
 Samples
 -------

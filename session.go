@@ -75,18 +75,24 @@ func newServerSession(peer TransportPeer) *session {
 }
 
 func (s *session) updateHash(data []byte) {
-	logDebug("dtls: [%s] updating hash with [%X]", s.peer.String(), data)
+	if DebugHandshakeHash {
+		logDebug("dtls: [%s] updating hash with [%X]", s.peer.String(), data)
+	}
 	s.hash.Write(data)
 }
 
 func (s *session) resetHash() {
-	logDebug("dtls: [%s] reset hash", s.peer.String())
+	if DebugHandshakeHash {
+		logDebug("dtls: [%s] reset hash", s.peer.String())
+	}
 	s.hash.Reset()
 }
 
 func (s *session) getHash() []byte {
 	sum := s.hash.Sum(nil)
-	logDebug("dtls: [%s] generating hash [%X]", s.peer.String(), sum)
+	if DebugHandshakeHash {
+		logDebug("dtls: [%s] generating hash [%X]", s.peer.String(), sum)
+	}
 	return sum
 }
 

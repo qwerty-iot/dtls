@@ -27,6 +27,10 @@ func (p *Peer) RemoteAddr() string {
 	return p.peer.String()
 }
 
+func (p *Peer) SessionIdentity() string {
+	return p.session.Client.Identity
+}
+
 func (p *Peer) Close() {
 	rec := newRecord(ContentType_Alert, p.session.getEpoch(), p.session.getNextSequence(), newAlert(AlertType_Fatal, AlertDesc_CloseNotify).Bytes())
 	p.session.writeRecord(rec)

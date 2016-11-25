@@ -130,7 +130,7 @@ func dataEncrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string)
 		return nil, err
 	}
 
-	if len(peer) > 0 {
+	if DebugEncryption && len(peer) > 0 {
 		logDebug("dtls: [%s] encrypt nonce[%X] key[%X] aad[%X]", peer, nonce, key, aad)
 		logDebug("dtls: [%s] encrypt clearText[%X][%d]", peer, data, len(data))
 	}
@@ -145,7 +145,7 @@ func dataEncrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string)
 		return nil, errors.New("dtls: invalid nonce length")
 	}
 	cipherText = ccmCipher.Seal(cipherText, nonce, data, aad)
-	if len(peer) > 0 {
+	if DebugEncryption && len(peer) > 0 {
 		logDebug("dtls: [%s] encrypt cipherText[%X][%d]", peer, cipherText, len(cipherText))
 	}
 	return cipherText, nil
@@ -162,9 +162,9 @@ func dataDecrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string)
 		return nil, err
 	}
 
-	if len(peer) > 0 {
+	if DebugEncryption && len(peer) > 0 {
 		logDebug("dtls: [%s] decrypt nonce[%X] key[%X] aad[%X]", peer, nonce, key, aad)
-		logDebug("stls: [%s] decrypt cipherText[%X][%d]", peer, data, len(data))
+		logDebug("dtls: [%s] decrypt cipherText[%X][%d]", peer, data, len(data))
 	}
 
 	clearText := make([]byte, 0, len(data))
@@ -173,7 +173,7 @@ func dataDecrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string)
 	if err != nil {
 		return nil, err
 	}
-	if len(peer) > 0 {
+	if DebugEncryption && len(peer) > 0 {
 		logDebug("dtls: [%s] decrypt clearText[%X][%d]", peer, clearText, len(clearText))
 	}
 	return clearText, nil
