@@ -114,10 +114,14 @@ func (s *session) getNextSequence() uint64 {
 
 func (s *session) initKeyBlock() error {
 	var err error
-	logDebug("dtls: [%s] identity[%s] psk[%X] clientRandom[%X] serverRandom[%X]", s.peer.String(), s.Client.Identity, s.Psk, s.Client.Random, s.Server.Random)
+
 	s.KeyBlock, err = newKeyBlock([]byte(s.Client.Identity), s.Psk, s.Client.Random, s.Server.Random)
 
-	logDebug("dtls: [%s] %s", s.peer.String(), s.KeyBlock.Print())
+	if DebugEncryption {
+		logDebug("dtls: [%s] identity[%s] psk[%X] clientRandom[%X] serverRandom[%X]", s.peer.String(), s.Client.Identity, s.Psk, s.Client.Random, s.Server.Random)
+		logDebug("dtls: [%s] %s", s.peer.String(), s.KeyBlock.Print())
+	}
+
 	return err
 }
 

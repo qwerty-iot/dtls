@@ -106,7 +106,7 @@ func (s *RecordSuite) TestPrint(c *C) {
 	newRec := newRecord(ContentType_Handshake, 1, 22, nil)
 
 	rec, _, _ := parseRecord(newRec.Bytes())
-	c.Assert(rec.Print(), Equals, "contentType[22] version[FEFD] epoch[1] seq[22] length[0] data[]")
+	c.Assert(rec.Print(), Equals, "contentType[Handshake(22)] version[FEFD] epoch[1] seq[22] length[0] data[]")
 }
 
 func (s *RecordSuite) TestUnderflow(c *C) {

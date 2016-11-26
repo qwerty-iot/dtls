@@ -14,8 +14,6 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		return nil, nil, err
 	}
 
-	logDebug("dtls: [%s] read %s (%d rem)", s.peer.String(), rec.Print(), len(rem))
-
 	if s.decrypt {
 		var iv []byte
 		var key []byte
@@ -30,31 +28,30 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		aad := newAad(rec.Epoch, rec.Sequence, uint8(rec.ContentType), uint16(len(rec.Data)-16))
 		clearText, err := dataDecrypt(rec.Data[8:], nonce, key, aad, s.peer.String())
 		if err != nil {
-			return nil, nil, err
+			if rec.IsHandshake() {
+				logDebug("dtls: [%s] read %s (rem:%d) (decrypted:false)", s.peer.String(), rec.Print(), len(rem))
+				return rec, rem, nil
+			} else {
+				return nil, nil, err
+			}
 		}
 
 		rec.SetData(clearText)
 	}
 
+	logDebug("dtls: [%s] read %s (rem:%d) (decrypted:%t)", s.peer.String(), rec.Print(), len(rem), s.decrypt)
+
 	return rec, rem, nil
 }
 
-func (s *session) parseHandshake(data []byte) (*handshake, *record, []byte, error) {
-	rec, rem, err := s.parseRecord(data)
+func (s *session) parseHandshake(data []byte) (*handshake, error) {
+	hs, err := parseHandshake(data)
+	s.updateHash(data)
 	if err != nil {
-		return nil, nil, nil, err
-	}
-	if !rec.IsHandshake() {
-		return nil, rec, rem, nil
-		//return nil, nil, errors.New("dtls: response is not a handshake")
-	}
-	hs, err := parseHandshake(rec.Data)
-	s.updateHash(rec.Data)
-	if err != nil {
-		return nil, nil, rem, err
+		return nil, err
 	}
 	logDebug("dtls: [%s] read %s", s.peer.String(), hs.Print())
-	return hs, rec, rem, err
+	return hs, err
 }
 
 func (s *session) writeHandshake(hs *handshake) error {
@@ -132,19 +129,16 @@ func (s *session) waitForHandshake(timeout time.Duration) error {
 	return errors.New("dtls: unknown wait error")
 }
 
-func (s *session) processHandshakePacket(data []byte) error {
+func (s *session) processHandshakePacket(rspRec *record) error {
 	var reqHs, rspHs *handshake
-	var rspRec *record
-	var rem []byte
 	var err error
-
-	rspHs, rspRec, rem, err = s.parseHandshake(data)
-	if err != nil {
-		return err
-	}
 
 	switch rspRec.ContentType {
 	case ContentType_Handshake:
+		rspHs, err = s.parseHandshake(rspRec.Data)
+		if err != nil {
+			return err
+		}
 		switch rspHs.Header.HandshakeType {
 		case handshakeType_ClientHello:
 			cookie := rspHs.ClientHello.GetCookie()
@@ -336,8 +330,5 @@ func (s *session) processHandshakePacket(data []byte) error {
 		}
 	}
 
-	if rem != nil {
-		return s.processHandshakePacket(rem)
-	}
 	return nil
 }

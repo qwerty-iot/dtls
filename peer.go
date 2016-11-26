@@ -31,8 +31,8 @@ func (p *Peer) SessionIdentity() string {
 	return p.session.Client.Identity
 }
 
-func (p *Peer) Close() {
-	rec := newRecord(ContentType_Alert, p.session.getEpoch(), p.session.getNextSequence(), newAlert(AlertType_Fatal, AlertDesc_CloseNotify).Bytes())
+func (p *Peer) Close(alertDesc uint8) {
+	rec := newRecord(ContentType_Alert, p.session.getEpoch(), p.session.getNextSequence(), newAlert(AlertType_Fatal, alertDesc).Bytes())
 	p.session.writeRecord(rec)
 }
 

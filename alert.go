@@ -1,6 +1,7 @@
 package dtls
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -32,6 +33,7 @@ const (
 	AlertDesc_UserCanceled           uint8 = 90
 	AlertDesc_NoRenegotiation        uint8 = 100
 	AlertDesc_UnsupportedExtension   uint8 = 110
+	AlertDesc_Noop                   uint8 = 254
 )
 
 type alert struct {
@@ -48,6 +50,17 @@ func (a *alert) Bytes() []byte {
 	b[0] = a.Type
 	b[1] = a.Desc
 	return b
+}
+
+func (a *alert) Print() string {
+	return fmt.Sprintf("alert type[%s] desc[%s]", alertTypeToString(a.Type), alertDescToString(a.Desc))
+}
+
+func parseAlert(raw []byte) (*alert, error) {
+	if len(raw) < 2 {
+		return nil, errors.New("dtls: alert can't be parsed")
+	}
+	return &alert{raw[0], raw[1]}, nil
 }
 
 func alertTypeToString(t uint8) string {

@@ -42,6 +42,10 @@ func (u *udpTransport) Local() string {
 	return u.socket.LocalAddr().String()
 }
 
+func (u *udpTransport) Shutdown() error {
+	return u.socket.Close()
+}
+
 func (u *udpTransport) ReadPacket() ([]byte, TransportPeer, error) {
 	buffer := make([]byte, 32768)
 

@@ -72,12 +72,34 @@ func (r *record) Bytes() []byte {
 }
 
 func (r *record) IsHandshake() bool {
-	if r.ContentType == ContentType_Handshake {
+	if r.ContentType == ContentType_Handshake || r.ContentType == ContentType_ChangeCipherSpec {
 		return true
 	}
 	return false
 }
 
+func (r *record) IsAlert() bool {
+	if r.ContentType == ContentType_Alert {
+		return true
+	}
+	return false
+}
+
+func (r *record) TypeString() string {
+	switch r.ContentType {
+	case ContentType_ChangeCipherSpec:
+		return "ChangeCipherSpec(20)"
+	case ContentType_Alert:
+		return "Alert(21)"
+	case ContentType_Handshake:
+		return "Handshake(22)"
+	case ContentType_Appdata:
+		return "AppData(23)"
+	default:
+		return fmt.Sprintf("Unknown(%d)", r.ContentType)
+	}
+}
+
 func (r *record) Print() string {
-	return fmt.Sprintf("contentType[%d] version[%X] epoch[%d] seq[%d] length[%d] data[%X]", r.ContentType, r.Version, r.Epoch, r.Sequence, r.Length, r.Data)
+	return fmt.Sprintf("contentType[%s] version[%X] epoch[%d] seq[%d] length[%d] data[%X]", r.TypeString(), r.Version, r.Epoch, r.Sequence, r.Length, r.Data)
 }

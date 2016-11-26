@@ -21,6 +21,7 @@ func (s *DtlsSuite) SetUpSuite(c *C) {
 	var err error
 
 	SetLogLevel("debug")
+	//DebugAll()
 
 	server, err = NewUdpListener(":5684", time.Second*5)
 	server.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
@@ -43,19 +44,20 @@ func (s *DtlsSuite) SetUpSuite(c *C) {
 /*
 func (s *DtlsSuite) TestConnect(c *C) {
 
-	peer, err := listener.AddPeer("127.0.0.1:5684", "oFIrQFrW8EWcZ5u7eGfrkw")
+	peer, err := client.AddPeer("127.0.0.1:5684", "oFIrQFrW8EWcZ5u7eGfrkw")
 	c.Assert(err, IsNil)
 	c.Log("finished connecting")
 
 	coapMsg, _ := hex.DecodeString("400222E1B2726411283A65703D636C69656E7431056C743D333003623D55FF3C2F312F303E2C3C2F322F303E2C3C2F322F313E2C3C2F322F323E2C3C2F322F333E")
 	err = peer.Write(coapMsg)
 	c.Assert(err, IsNil)
-	data, rsp := listener.Read()
+	data, err := peer.Read(time.Second * 5)
 	c.Assert(data, NotNil)
-	c.Assert(rsp, NotNil)
+	c.Assert(err, IsNil)
 
 }*/
 
+/*
 func (s *DtlsSuite) TestSimple(c *C) {
 
 	go func() {
@@ -90,6 +92,72 @@ func (s *DtlsSuite) TestSimple(c *C) {
 	data, err := peer.Read(time.Second * 5)
 	c.Assert(err, IsNil)
 	c.Assert(hex.EncodeToString(data), Equals, hex.EncodeToString(seedData))
+
+	seedData = randomBytes(20)
+
+	peer.Write(seedData)
+
+	data, err = peer.Read(time.Second * 5)
+	c.Assert(err, IsNil)
+	c.Assert(hex.EncodeToString(data), Equals, hex.EncodeToString(seedData))
+
+}*/
+
+func (s *DtlsSuite) TestReconnects(c *C) {
+
+	go func() {
+		cnt := 2
+		for {
+			c.Log("receiving packet")
+			data, replyTo := server.Read()
+
+			c.Log("received packet")
+
+			c.Assert(data, NotNil)
+			c.Assert(replyTo, NotNil)
+
+			replyTo.Write(data)
+			cnt -= 1
+			if cnt == 0 {
+				break
+			}
+		}
+		c.Log("ending reader")
+	}()
+
+	client2, err := NewUdpListener(":6000", time.Second*5)
+	c.Assert(client, NotNil)
+	c.Assert(err, IsNil)
+
+	peer, err := client2.AddPeer("127.0.0.1:5684", "myIdentity")
+	c.Assert(peer, NotNil)
+	c.Assert(err, IsNil)
+	c.Log("connected")
+
+	seedData := randomBytes(20)
+
+	peer.Write(seedData)
+
+	data, err := peer.Read(time.Second * 5)
+	c.Assert(err, IsNil)
+	c.Assert(hex.EncodeToString(data), Equals, hex.EncodeToString(seedData))
+
+	err = client2.Shutdown()
+	c.Assert(err, IsNil)
+
+	client3, err := NewUdpListener(":6000", time.Second*5)
+	c.Assert(client, NotNil)
+	c.Assert(err, IsNil)
+
+	peer, err = client3.AddPeer("127.0.0.1:5684", "myIdentity")
+	c.Assert(peer, IsNil)
+	c.Assert(err, NotNil)
+	c.Log("connected")
+
+	peer, err = client3.AddPeer("127.0.0.1:5684", "myIdentity")
+	c.Assert(peer, NotNil)
+	c.Assert(err, IsNil)
+	c.Log("connected")
 
 	seedData = randomBytes(20)
 
