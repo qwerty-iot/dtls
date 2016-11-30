@@ -4,6 +4,8 @@ dtls
 [![Build Status](https://travis-ci.org/bocajim/dtls.svg?branch=master)](https://travis-ci.org/bocajim/dtls)
 [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls)](http://gocover.io/github.com/bocajim/dtls)
 [![GoDoc](https://godoc.org/github.com/bocajim/dtls?status.png)](http://godoc.org/github.com/bocajim/dtls)
+[![License][https://img.shields.io/npm/l/express.svg]][http://opensource.org/licenses/MIT]
+[![ReportCard][http://goreportcard.com/badge/github.com/nats-io/gnatsd]][http://goreportcard.com/report/nats-io/gnatsd]
 
 https://github.com/bocajim/dtls
 
