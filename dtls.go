@@ -1,6 +1,7 @@
 package dtls
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
@@ -198,4 +199,15 @@ func (l *Listener) AddCompressionMethod(compressionMethod CompressionMethod) {
 	}
 	l.compressionMethods = append(l.compressionMethods, compressionMethod)
 	return
+}
+
+func (l *Listener) FindPeer(addr string) (*Peer, error) {
+	l.mux.Lock()
+	p, found := l.peers[addr]
+	l.mux.Unlock()
+	if found {
+		return p, nil
+	} else {
+		return nil, errors.New("dtls: Peer [" + addr + "] not found.")
+	}
 }
