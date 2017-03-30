@@ -78,6 +78,13 @@ func (r *record) IsHandshake() bool {
 	return false
 }
 
+func (r *record) IsAppData() bool {
+	if r.ContentType == ContentType_Appdata {
+		return true
+	}
+	return false
+}
+
 func (r *record) IsAlert() bool {
 	if r.ContentType == ContentType_Alert {
 		return true

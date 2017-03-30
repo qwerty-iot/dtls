@@ -91,6 +91,9 @@ func receiver(l *Listener) {
 				l.RemovePeer(p, AlertDesc_Noop)
 				logWarn("dtls: [%s][%s] received fatal alert from %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), alertDescToString(alert.Desc))
 			}
+		} else if rec.IsAppData() && !p.session.isHandshakeDone() {
+			l.RemovePeer(p, AlertDesc_DecryptError)
+			logWarn("dtls: [%s][%s] received app data message without completing handshake for %s", l.transport.Type(), l.transport.Local(), peer.String())
 		} else {
 			if p.queue != nil {
 				p.queue <- rec.Data
