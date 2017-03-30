@@ -15,6 +15,10 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 	}
 
 	if s.decrypt {
+		if s.KeyBlock == nil {
+			logWarn("dtls: [%s] tried to decrypt but KeyBlock not initialized.", s.peer.String())
+			return nil, nil, errors.New("dtls: key block not initialized")
+		}
 		var iv []byte
 		var key []byte
 		if s.Type == SessionType_Client {
