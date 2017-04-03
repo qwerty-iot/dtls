@@ -96,13 +96,16 @@ func (h *clientHello) Print() string {
 	for _, suite := range h.cipherSuites {
 		suitesStr += fmt.Sprintf("%s,", cipherSuiteToString(suite))
 	}
-	suitesStr = suitesStr[:len(suitesStr)-1]
-
+	if len(suitesStr) > 2 {
+		suitesStr = suitesStr[:len(suitesStr)-1]
+	}
 	comprStr := ""
 	for _, compr := range h.compressionMethods {
 		comprStr += fmt.Sprintf("0x%02X,", compr)
 	}
-	comprStr = comprStr[:len(comprStr)-1]
+	if len(comprStr) > 2 {
+		comprStr = comprStr[:len(comprStr)-1]
+	}
 
 	return fmt.Sprintf("version[0x%X] randomData[%s][%X] sessionId[%X][%d] cookie[%X][%d] cipherSuites[%s][%d] compressionMethods[%v][%d]", h.version, time.Unix(int64(h.randomTime), 0).String(), h.randomBytes, h.sessionId, h.sessionIdLen, h.cookie, h.cookieLen, suitesStr, h.cipherSuitesLen, comprStr, h.compressionMethodsLen)
 }

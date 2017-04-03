@@ -207,6 +207,10 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			}
 			s.handshake.state = "finished"
 			break
+		default:
+			logWarn("dtls: [%s] invalid handshake type [%v] received", s.peer.String(), rspRec.ContentType)
+			err = errors.New("dtls: bad handshake type")
+			break
 		}
 	case ContentType_ChangeCipherSpec:
 		s.decrypt = true
