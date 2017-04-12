@@ -214,3 +214,11 @@ func (l *Listener) FindPeer(addr string) (*Peer, error) {
 		return nil, errors.New("dtls: Peer [" + addr + "] not found.")
 	}
 }
+
+func (l *Listener) CountPeers() int {
+	var count int
+	l.mux.Lock()
+	count = len(l.peers)
+	l.mux.Unlock()
+	return count
+}
