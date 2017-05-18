@@ -33,9 +33,10 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		clearText, err := dataDecrypt(rec.Data[8:], nonce, key, aad, s.peer.String())
 		if err != nil {
 			if rec.IsHandshake() {
-				logDebug("dtls: [%s] read %s (rem:%d) (decrypted:false)", s.peer.String(), rec.Print(), len(rem))
+				logDebug("dtls: [%s] read %s (rem:%d) (decrypted:not-applicable): %s", s.peer.String(), rec.Print(), len(rem), err.Error())
 				return rec, rem, nil
 			} else {
+				logWarn("dtls: [%s] read decryption error: %s", s.peer.String(), err.Error())
 				return nil, nil, err
 			}
 		}

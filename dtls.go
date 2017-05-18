@@ -102,7 +102,7 @@ func receiver(l *Listener) {
 			}
 			//TODO handle case where queue is full and not being read
 		}
-		if rem == nil {
+		if rem == nil || len(rem) == 0 {
 			break
 		} else {
 			data = rem
