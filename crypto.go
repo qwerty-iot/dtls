@@ -171,6 +171,9 @@ func dataDecrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string)
 
 	clearText, err = ccmCipher.Open(clearText, nonce, data, aad)
 	if err != nil {
+		if DebugEncryption && len(peer) > 0 {
+			logWarn("dtls: [%s] decrypt failed: %s", peer, err.Error())
+		}
 		return nil, err
 	}
 	if DebugEncryption && len(peer) > 0 {

@@ -9,6 +9,7 @@ import (
 	"crypto/subtle"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 )
 
@@ -224,7 +225,8 @@ func (c *ccm) Open(dst, nonce, ciphertext, adata []byte) ([]byte, error) {
 	}
 
 	if subtle.ConstantTimeCompare(tag, expectedTag) != 1 {
-		return nil, errOpen
+		return nil, errors.New(fmt.Sprintf("ccm: t[%X] != et[%X]", tag, expectedTag))
+		//return nil, errOpen
 	}
 	return append(dst, plaintext...), nil
 }
