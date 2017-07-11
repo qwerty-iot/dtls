@@ -149,6 +149,8 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			cookie := rspHs.ClientHello.GetCookie()
 			if len(cookie) == 0 {
 				s.generateCookie()
+				s.sequenceNumber = uint64(rspHs.Header.Sequence)
+				s.handshake.seq = rspHs.Header.Sequence
 				s.handshake.state = "recv-clienthello-initial"
 			} else {
 				if !reflect.DeepEqual(cookie, s.handshake.cookie) {
