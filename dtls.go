@@ -53,10 +53,10 @@ func receiver(l *Listener) {
 	l.mux.Unlock()
 	if !found {
 		//this is where server code will go
-		logInfo("dtls: [%s][%s] received from unknown peer %s", l.transport.Type(), l.transport.Local(), peer.String())
+		logDebug("dtls: [%s][%s] received from unknown peer %s", l.transport.Type(), l.transport.Local(), peer.String())
 		p, _ = l.addServerPeer(peer)
 	} else {
-		logInfo("dtls: [%s][%s] received from peer %s", l.transport.Type(), l.transport.Local(), peer.String())
+		logDebug("dtls: [%s][%s] received from peer %s", l.transport.Type(), l.transport.Local(), peer.String())
 	}
 
 	for {
@@ -86,7 +86,7 @@ func receiver(l *Listener) {
 				logWarn("dtls: [%s][%s] failed to parse alert for %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), err.Error())
 			}
 			if alert.Type == AlertType_Warning {
-				logInfo("dtls: [%s][%s] received warning alert from %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), alertDescToString(alert.Desc))
+				logWarn("dtls: [%s][%s] received warning alert from %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), alertDescToString(alert.Desc))
 			} else {
 				l.RemovePeer(p, AlertDesc_Noop)
 				logWarn("dtls: [%s][%s] received fatal alert from %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), alertDescToString(alert.Desc))
