@@ -76,14 +76,14 @@ func newServerSession(peer TransportPeer) *session {
 
 func (s *session) updateHash(data []byte) {
 	if DebugHandshakeHash {
-		logDebug("dtls: [%s] updating hash with [%X]", s.peer.String(), data)
+		logDebug(s.peer.String(), "dtls: updating hash with [%X]", data)
 	}
 	s.hash.Write(data)
 }
 
 func (s *session) resetHash() {
 	if DebugHandshakeHash {
-		logDebug("dtls: [%s] reset hash", s.peer.String())
+		logDebug(s.peer.String(), "dtls: reset hash")
 	}
 	s.hash.Reset()
 }
@@ -91,7 +91,7 @@ func (s *session) resetHash() {
 func (s *session) getHash() []byte {
 	sum := s.hash.Sum(nil)
 	if DebugHandshakeHash {
-		logDebug("dtls: [%s] generating hash [%X]", s.peer.String(), sum)
+		logDebug(s.peer.String(), "dtls: [%s] generating hash [%X]", sum)
 	}
 	return sum
 }
@@ -118,8 +118,8 @@ func (s *session) initKeyBlock() error {
 	s.KeyBlock, err = newKeyBlock([]byte(s.Client.Identity), s.Psk, s.Client.Random, s.Server.Random)
 
 	if DebugEncryption {
-		logDebug("dtls: [%s] identity[%s] psk[%X] clientRandom[%X] serverRandom[%X]", s.peer.String(), s.Client.Identity, s.Psk, s.Client.Random, s.Server.Random)
-		logDebug("dtls: [%s] %s", s.peer.String(), s.KeyBlock.Print())
+		logDebug(s.peer.String(), "dtls: identity[%s] psk[%X] clientRandom[%X] serverRandom[%X]", s.Client.Identity, s.Psk, s.Client.Random, s.Server.Random)
+		logDebug(s.peer.String(), "dtls: %s", s.KeyBlock.Print())
 	}
 
 	return err

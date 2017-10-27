@@ -131,8 +131,8 @@ func dataEncrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string)
 	}
 
 	if DebugEncryption && len(peer) > 0 {
-		logDebug("dtls: [%s] encrypt nonce[%X] key[%X] aad[%X]", peer, nonce, key, aad)
-		logDebug("dtls: [%s] encrypt clearText[%X][%d]", peer, data, len(data))
+		logDebug(peer, "dtls: encrypt nonce[%X] key[%X] aad[%X]", nonce, key, aad)
+		logDebug(peer, "dtls: encrypt clearText[%X][%d]", data, len(data))
 	}
 
 	cipherTextLen := (len(data) / 16) * 16
@@ -146,7 +146,7 @@ func dataEncrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string)
 	}
 	cipherText = ccmCipher.Seal(cipherText, nonce, data, aad)
 	if DebugEncryption && len(peer) > 0 {
-		logDebug("dtls: [%s] encrypt cipherText[%X][%d]", peer, cipherText, len(cipherText))
+		logDebug(peer, "dtls: encrypt cipherText[%X][%d]", cipherText, len(cipherText))
 	}
 	return cipherText, nil
 }
@@ -163,8 +163,8 @@ func dataDecrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string)
 	}
 
 	if DebugEncryption && len(peer) > 0 {
-		logDebug("dtls: [%s] decrypt nonce[%X] key[%X] aad[%X]", peer, nonce, key, aad)
-		logDebug("dtls: [%s] decrypt cipherText[%X][%d]", peer, data, len(data))
+		logDebug(peer, "dtls: decrypt nonce[%X] key[%X] aad[%X]", nonce, key, aad)
+		logDebug(peer, "dtls: decrypt cipherText[%X][%d]", data, len(data))
 	}
 
 	clearText := make([]byte, 0, len(data))
@@ -172,12 +172,12 @@ func dataDecrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string)
 	clearText, err = ccmCipher.Open(clearText, nonce, data, aad)
 	if err != nil {
 		if DebugEncryption && len(peer) > 0 {
-			logWarn("dtls: [%s] decrypt failed: %s", peer, err.Error())
+			logWarn(peer, "dtls: decrypt failed: %s", err.Error())
 		}
 		return nil, err
 	}
 	if DebugEncryption && len(peer) > 0 {
-		logDebug("dtls: [%s] decrypt clearText[%X][%d]", peer, clearText, len(clearText))
+		logDebug(peer, "dtls: decrypt clearText[%X][%d]", clearText, len(clearText))
 	}
 	return clearText, nil
 }

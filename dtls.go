@@ -36,14 +36,14 @@ func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, erro
 
 func receiver(l *Listener) {
 	if l.isShutdown {
-		logDebug("dtls: [%s][%s] receiver shutting down", l.transport.Type(), l.transport.Local())
+		logDebug("", "dtls: [%s][%s] receiver shutting down", l.transport.Type(), l.transport.Local())
 		l.wg.Done()
 		return
 	}
-	logDebug("dtls: [%s][%s] waiting for packet", l.transport.Type(), l.transport.Local())
+	logDebug("", "dtls: [%s][%s] waiting for packet", l.transport.Type(), l.transport.Local())
 	data, peer, err := l.transport.ReadPacket()
 	if err != nil {
-		logError("[%s][%s] failed to read packet: %s", l.transport.Type(), l.transport.Local(), err.Error())
+		logError("", "[%s][%s] failed to read packet: %s", l.transport.Type(), l.transport.Local(), err.Error())
 		l.wg.Done()
 		return
 	}
@@ -53,47 +53,47 @@ func receiver(l *Listener) {
 	l.mux.Unlock()
 	if !found {
 		//this is where server code will go
-		logDebug("dtls: [%s][%s] received from unknown peer %s", l.transport.Type(), l.transport.Local(), peer.String())
+		logDebug(peer.String(), "dtls: [%s][%s] received from unknown peer", l.transport.Type(), l.transport.Local())
 		p, _ = l.addServerPeer(peer)
 	} else {
-		logDebug("dtls: [%s][%s] received from peer %s", l.transport.Type(), l.transport.Local(), peer.String())
+		logDebug(peer.String(), "dtls: [%s][%s] received from peer", l.transport.Type(), l.transport.Local())
 	}
 
 	for {
 		rec, rem, err := p.session.parseRecord(data)
 		if err != nil {
-			logWarn("dtls: [%s][%s] error parsing record from %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), err.Error())
+			logWarn(peer.String(), "dtls: [%s][%s] error parsing record: %s", l.transport.Type(), l.transport.Local(), err.Error())
 			l.RemovePeer(p, AlertDesc_DecodeError)
 			break
 		}
 
 		if rec.IsHandshake() {
 			if !p.session.isHandshakeDone() {
-				logDebug("dtls: [%s][%s] handshake in progress from %s", l.transport.Type(), l.transport.Local(), peer.String())
+				logDebug(peer.String(), "dtls: [%s][%s] handshake in progress", l.transport.Type(), l.transport.Local())
 				if err := p.session.processHandshakePacket(rec); err != nil {
 					l.RemovePeer(p, AlertDesc_HandshakeFailure)
-					logWarn("dtls: [%s][%s] failed to complete handshake for %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), err.Error())
+					logWarn(peer.String(), "dtls: [%s][%s] failed to complete handshake: %s", l.transport.Type(), l.transport.Local(), err.Error())
 				}
 			} else {
 				l.RemovePeer(p, AlertDesc_HandshakeFailure)
-				logWarn("dtls: [%s][%s] received handshake message after handshake is complete for %s", l.transport.Type(), l.transport.Local(), peer.String())
+				logWarn(peer.String(), "dtls: [%s][%s] received handshake message after handshake is complete", l.transport.Type(), l.transport.Local())
 			}
 		} else if rec.IsAlert() {
 			//handle alert
 			alert, err := parseAlert(rec.Data)
 			if err != nil {
 				l.RemovePeer(p, AlertDesc_DecodeError)
-				logWarn("dtls: [%s][%s] failed to parse alert for %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), err.Error())
+				logWarn(peer.String(), "dtls: [%s][%s] failed to parse alert: %s", l.transport.Type(), l.transport.Local(), err.Error())
 			}
 			if alert.Type == AlertType_Warning {
-				logWarn("dtls: [%s][%s] received warning alert from %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), alertDescToString(alert.Desc))
+				logWarn(peer.String(), "dtls: [%s][%s] received warning alert: %s", l.transport.Type(), l.transport.Local(), alertDescToString(alert.Desc))
 			} else {
 				l.RemovePeer(p, AlertDesc_Noop)
-				logWarn("dtls: [%s][%s] received fatal alert from %s: %s", l.transport.Type(), l.transport.Local(), peer.String(), alertDescToString(alert.Desc))
+				logWarn(peer.String(), "dtls: [%s][%s] received fatal alert: %s", l.transport.Type(), l.transport.Local(), alertDescToString(alert.Desc))
 			}
 		} else if rec.IsAppData() && !p.session.isHandshakeDone() {
 			l.RemovePeer(p, AlertDesc_DecryptError)
-			logWarn("dtls: [%s][%s] received app data message without completing handshake for %s", l.transport.Type(), l.transport.Local(), peer.String())
+			logWarn(peer.String(), "dtls: [%s][%s] received app data message without completing handshake", l.transport.Type(), l.transport.Local())
 		} else {
 			if p.queue != nil {
 				p.queue <- rec.Data

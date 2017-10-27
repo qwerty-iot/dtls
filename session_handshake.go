@@ -10,13 +10,13 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 
 	rec, rem, err := parseRecord(data)
 	if err != nil {
-		logWarn("dtls: [%s] parse record: %s", s.peer.String(), err.Error())
+		logWarn(s.peer.String(), "dtls: parse record: %s", err.Error())
 		return nil, nil, err
 	}
 
 	if s.decrypt {
 		if s.KeyBlock == nil {
-			logWarn("dtls: [%s] tried to decrypt but KeyBlock not initialized.", s.peer.String())
+			logWarn(s.peer.String(), "dtls: tried to decrypt but KeyBlock not initialized.")
 			return nil, nil, errors.New("dtls: key block not initialized")
 		}
 		var iv []byte
@@ -33,10 +33,10 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		clearText, err := dataDecrypt(rec.Data[8:], nonce, key, aad, s.peer.String())
 		if err != nil {
 			if rec.IsHandshake() {
-				logDebug("dtls: [%s] read %s (rem:%d) (decrypted:not-applicable): %s", s.peer.String(), rec.Print(), len(rem), err.Error())
+				logDebug(s.peer.String(), "dtls: read %s (rem:%d) (decrypted:not-applicable): %s", rec.Print(), len(rem), err.Error())
 				return rec, rem, nil
 			} else {
-				logWarn("dtls: [%s] read decryption error: %s", s.peer.String(), err.Error())
+				logWarn(s.peer.String(), "dtls: read decryption error: %s", err.Error())
 				return nil, nil, err
 			}
 		}
@@ -44,7 +44,7 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		rec.SetData(clearText)
 	}
 
-	logDebug("dtls: [%s] read %s (rem:%d) (decrypted:%t)", s.peer.String(), rec.Print(), len(rem), s.decrypt)
+	logDebug(s.peer.String(), "dtls: read %s (rem:%d) (decrypted:%t)", rec.Print(), len(rem), s.decrypt)
 
 	return rec, rem, nil
 }
@@ -55,7 +55,7 @@ func (s *session) parseHandshake(data []byte) (*handshake, error) {
 	if err != nil {
 		return nil, err
 	}
-	logDebug("dtls: [%s] read %s", s.peer.String(), hs.Print())
+	logDebug(s.peer.String(), "dtls: read %s", hs.Print())
 	return hs, err
 }
 
@@ -67,7 +67,7 @@ func (s *session) writeHandshake(hs *handshake) error {
 
 	s.updateHash(rec.Data)
 
-	logDebug("dtls: [%s] write %s", s.peer.String(), hs.Print())
+	logDebug(s.peer.String(), "dtls: write %s", hs.Print())
 
 	return s.writeRecord(rec)
 }
@@ -94,10 +94,10 @@ func (s *session) writeRecord(rec *record) error {
 		w.PutUint48(rec.Sequence)
 		w.PutBytes(cipherText)
 		rec.SetData(w.Bytes())
-		logDebug("dtls: [%s] write %s", s.peer.String(), rec.Print())
+		logDebug(s.peer.String(), "dtls: write %s", rec.Print())
 		return s.peer.WritePacket(rec.Bytes())
 	} else {
-		logDebug("dtls: [%s] write %s", s.peer.String(), rec.Print())
+		logDebug(s.peer.String(), "dtls: write %s", rec.Print())
 		return s.peer.WritePacket(rec.Bytes())
 	}
 }
@@ -202,7 +202,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				label = "client"
 			}
 			if rspHs.Finished.Match(s.KeyBlock.MasterSecret, s.handshake.savedHash, label) {
-				logDebug("dtls: [%s] encryption matches, handshake complete", s.peer.String())
+				logDebug(s.peer.String(), "dtls: encryption matches, handshake complete")
 			} else {
 				s.handshake.state = "failed"
 				err = errors.New("dtls: crypto verification failed")
@@ -211,7 +211,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			s.handshake.state = "finished"
 			break
 		default:
-			logWarn("dtls: [%s] invalid handshake type [%v] received", s.peer.String(), rspRec.ContentType)
+			logWarn(s.peer.String(), "dtls: invalid handshake type [%v] received", rspRec.ContentType)
 			err = errors.New("dtls: bad handshake type")
 			break
 		}
