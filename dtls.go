@@ -125,6 +125,19 @@ func (l *Listener) RemovePeer(peer *Peer, alertDesc uint8) error {
 	return nil
 }
 
+func (l *Listener) RemovePeerByAddr(addr string, alertDesc uint8) error {
+	l.mux.Lock()
+	p, found := l.peers[addr]
+	if found {
+		if alertDesc != AlertDesc_Noop {
+			p.Close(alertDesc)
+		}
+		delete(l.peers, p.RemoteAddr())
+	}
+	l.mux.Unlock()
+	return nil
+}
+
 func (l *Listener) addServerPeer(tpeer TransportPeer) (*Peer, error) {
 	peer := &Peer{peer: tpeer}
 	peer.session = newServerSession(peer.peer)
