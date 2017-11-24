@@ -67,7 +67,7 @@ func (s *session) writeHandshake(hs *handshake) error {
 
 	s.updateHash(rec.Data)
 
-	logDebug(s.peer.String(), "dtls: write %s", hs.Print())
+	logDebug(s.peer.String(), "dtls: write (handshake) %s", hs.Print())
 
 	return s.writeRecord(rec)
 }
@@ -94,10 +94,10 @@ func (s *session) writeRecord(rec *record) error {
 		w.PutUint48(rec.Sequence)
 		w.PutBytes(cipherText)
 		rec.SetData(w.Bytes())
-		logDebug(s.peer.String(), "dtls: write %s", rec.Print())
+		logDebug(s.peer.String(), "dtls: write (encrptyed) %s", rec.Print())
 		return s.peer.WritePacket(rec.Bytes())
 	} else {
-		logDebug(s.peer.String(), "dtls: write %s", rec.Print())
+		logDebug(s.peer.String(), "dtls: write (unencrypted) %s", rec.Print())
 		return s.peer.WritePacket(rec.Bytes())
 	}
 }
@@ -144,10 +144,16 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 		if err != nil {
 			return err
 		}
+
+		if s.isHandshakeDone() && rspHs.Header.HandshakeType != handshakeType_ClientHello {
+			return errors.New("dtls: handshake packet received after handshake is complete")
+		}
+
 		switch rspHs.Header.HandshakeType {
 		case handshakeType_ClientHello:
 			cookie := rspHs.ClientHello.GetCookie()
 			if len(cookie) == 0 {
+				s.reset()
 				s.generateCookie()
 				s.sequenceNumber = uint64(rspHs.Header.Sequence)
 				s.handshake.seq = rspHs.Header.Sequence

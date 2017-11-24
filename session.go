@@ -81,6 +81,21 @@ func (s *session) updateHash(data []byte) {
 	s.hash.Write(data)
 }
 
+func (s *session) reset() {
+	if DebugHandshakeHash {
+		logDebug(s.peer.String(), "dtls: reset session state")
+	}
+	s.decrypt = false
+	s.encrypt = false
+	s.epoch = 0
+	s.sequenceNumber = 0
+	s.handshake.state = ""
+	s.handshake.cookie = nil
+	s.handshake.savedHash = nil
+	s.handshake.seq = 0
+	s.hash.Reset()
+}
+
 func (s *session) resetHash() {
 	if DebugHandshakeHash {
 		logDebug(s.peer.String(), "dtls: reset hash")

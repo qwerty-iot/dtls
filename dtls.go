@@ -68,15 +68,10 @@ func receiver(l *Listener) {
 		}
 
 		if rec.IsHandshake() {
-			if !p.session.isHandshakeDone() {
-				logDebug(peer.String(), "dtls: [%s][%s] handshake in progress", l.transport.Type(), l.transport.Local())
-				if err := p.session.processHandshakePacket(rec); err != nil {
-					l.RemovePeer(p, AlertDesc_HandshakeFailure)
-					logWarn(peer.String(), "dtls: [%s][%s] failed to complete handshake: %s", l.transport.Type(), l.transport.Local(), err.Error())
-				}
-			} else {
+			logDebug(peer.String(), "dtls: [%s][%s] handshake in progress", l.transport.Type(), l.transport.Local())
+			if err := p.session.processHandshakePacket(rec); err != nil {
 				l.RemovePeer(p, AlertDesc_HandshakeFailure)
-				logWarn(peer.String(), "dtls: [%s][%s] received handshake message after handshake is complete", l.transport.Type(), l.transport.Local())
+				logWarn(peer.String(), "dtls: [%s][%s] failed to complete handshake: %s", l.transport.Type(), l.transport.Local(), err.Error())
 			}
 		} else if rec.IsAlert() {
 			//handle alert
