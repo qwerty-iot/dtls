@@ -106,7 +106,7 @@ func (s *session) resetHash() {
 func (s *session) getHash() []byte {
 	sum := s.hash.Sum(nil)
 	if DebugHandshakeHash {
-		logDebug(s.peer.String(), "dtls: [%s] generating hash [%X]", sum)
+		logDebug(s.peer.String(), "dtls: generating hash [%X]", sum)
 	}
 	return sum
 }
