@@ -3,6 +3,7 @@ package dtls
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -21,7 +22,10 @@ type clientHello struct {
 	compressionMethods    []CompressionMethod
 }
 
-func (h *clientHello) Init(randomBytes []byte, cookie []byte, cipherSuites []CipherSuite, compressionMethods []CompressionMethod) {
+func (h *clientHello) Init(randomBytes []byte, cookie []byte, cipherSuites []CipherSuite, compressionMethods []CompressionMethod) error {
+	if len(randomBytes)<4 {
+		return errors.New("dtls: random data underflow")
+	}
 	h.version = DtlsVersion12
 	h.randomBytes = randomBytes
 	h.randomTime = binary.BigEndian.Uint32(h.randomBytes[:4])
@@ -33,6 +37,7 @@ func (h *clientHello) Init(randomBytes []byte, cookie []byte, cipherSuites []Cip
 	h.cipherSuites = cipherSuites
 	h.compressionMethodsLen = uint8(len(compressionMethods))
 	h.compressionMethods = compressionMethods
+	return nil
 }
 
 func (h *clientHello) Parse(rdr *byteReader) error {
