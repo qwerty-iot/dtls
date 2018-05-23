@@ -19,6 +19,10 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 			logWarn(s.peer.String(), "dtls: tried to decrypt but KeyBlock not initialized.")
 			return nil, nil, errors.New("dtls: key block not initialized")
 		}
+		if len(rec.Data) < 8 {
+			logWarn(s.peer.String(), "dtls: data underflow, expected at least 8 bytes.")
+			return nil, nil, errors.New("dtls: data underflow, expected at least 8 bytes")
+		}
 		var iv []byte
 		var key []byte
 		if s.Type == SessionType_Client {
@@ -255,7 +259,10 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 
 		case "recv-helloverifyrequest":
 			reqHs = newHandshake(handshakeType_ClientHello)
-			reqHs.ClientHello.Init(s.Client.Random, s.handshake.cookie, s.cipherSuites, s.compressionMethods)
+			err = reqHs.ClientHello.Init(s.Client.Random, s.handshake.cookie, s.cipherSuites, s.compressionMethods)
+			if err != nil {
+				break
+			}
 			err = s.writeHandshake(reqHs)
 			if err != nil {
 				break
