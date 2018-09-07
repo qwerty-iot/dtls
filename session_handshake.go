@@ -20,8 +20,14 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 			return nil, nil, errors.New("dtls: key block not initialized")
 		}
 		if len(rec.Data) < 8 {
-			logWarn(s.peer.String(), "dtls: data underflow, expected at least 8 bytes.")
-			return nil, nil, errors.New("dtls: data underflow, expected at least 8 bytes")
+			if rec.IsAlert() {
+				// we were expecting encryption, but received an unencrypted alert message.
+				logDebug(s.peer.String(), "dtls: read %s (rem:%d) (decrypted:not-applicable-alert)", rec.Print(), len(rem))
+				return rec, rem, nil
+			} else {
+				logWarn(s.peer.String(), "dtls: data underflow, expected at least 8 bytes, but received %d.", len(rec.Data))
+				return nil, nil, errors.New("dtls: data underflow, expected at least 8 bytes")
+			}
 		}
 		var iv []byte
 		var key []byte
@@ -188,7 +194,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			s.handshake.state = "recv-serverhello"
 		case handshakeType_ClientKeyExchange:
 			s.Client.Identity = string(rspHs.ClientKeyExchange.GetIdentity())
-			psk := GetPskFromKeystore(s.Client.Identity)
+			psk := GetPskFromKeystore(s.Client.Identity, s.peer.String())
 			if psk == nil {
 				err = errors.New("dtls: no valid psk for identity")
 				break
@@ -270,14 +276,14 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 		case "recv-serverhellodone":
 			reqHs = newHandshake(handshakeType_ClientKeyExchange)
 			if len(s.Server.Identity) > 0 {
-				psk := GetPskFromKeystore(s.Server.Identity)
+				psk := GetPskFromKeystore(s.Server.Identity, s.peer.String())
 				if len(psk) > 0 {
 					s.Client.Identity = s.Server.Identity
 					s.Psk = psk
 				}
 			}
 			if len(s.Psk) == 0 {
-				psk := GetPskFromKeystore(s.Client.Identity)
+				psk := GetPskFromKeystore(s.Client.Identity, s.peer.String())
 				if len(psk) > 0 {
 					s.Psk = psk
 				} else {
