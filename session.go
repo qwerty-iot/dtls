@@ -31,12 +31,13 @@ type session struct {
 	hash           hash.Hash
 	KeyBlock       *keyBlock
 	handshake      struct {
-		state     string
-		cookie    []byte
-		savedHash []byte
-		seq       uint16
-		err       error
-		done      chan error
+		state        string
+		cookie       []byte
+		savedHash    []byte
+		seq          uint16
+		err          error
+		firstDecrypt bool
+		done         chan error
 	}
 	cipherSuites       []CipherSuite
 	compressionMethods []CompressionMethod

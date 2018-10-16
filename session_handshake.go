@@ -42,6 +42,11 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		aad := newAad(rec.Epoch, rec.Sequence, uint8(rec.ContentType), uint16(len(rec.Data)-16))
 		clearText, err := dataDecrypt(rec.Data[8:], nonce, key, aad, s.peer.String())
 		if err != nil {
+			if s.handshake.firstDecrypt {
+				//callback that psk is invalid
+				logWarn(s.peer.String(), "dtls: PSK is most likely invalid for identity: %s%s", s.Server.Identity, s.Client.Identity)
+				s.handshake.firstDecrypt = false
+			}
 			if rec.IsHandshake() {
 				logDebug(s.peer.String(), "dtls: read %s (rem:%d) (decrypted:not-applicable): %s", rec.Print(), len(rem), err.Error())
 				return rec, rem, nil
@@ -233,6 +238,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 		}
 	case ContentType_ChangeCipherSpec:
 		s.decrypt = true
+		s.handshake.firstDecrypt = true
 		s.handshake.savedHash = s.getHash()
 		s.handshake.state = "cipherchangespec"
 	}
