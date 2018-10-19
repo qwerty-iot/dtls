@@ -57,7 +57,6 @@ func (s *DtlsSuite) TestConnect(c *C) {
 
 }*/
 
-/*
 func (s *DtlsSuite) TestSimple(c *C) {
 
 	go func() {
@@ -101,7 +100,7 @@ func (s *DtlsSuite) TestSimple(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(hex.EncodeToString(data), Equals, hex.EncodeToString(seedData))
 
-}*/
+}
 
 func (s *DtlsSuite) TestReconnects(c *C) {
 
@@ -150,11 +149,6 @@ func (s *DtlsSuite) TestReconnects(c *C) {
 	c.Assert(err, IsNil)
 
 	peer, err = client3.AddPeer("127.0.0.1:5684", "myIdentity")
-	c.Assert(peer, IsNil)
-	c.Assert(err, NotNil)
-	c.Log("connected")
-
-	peer, err = client3.AddPeer("127.0.0.1:5684", "myIdentity")
 	c.Assert(peer, NotNil)
 	c.Assert(err, IsNil)
 	c.Log("connected")
@@ -169,7 +163,6 @@ func (s *DtlsSuite) TestReconnects(c *C) {
 
 }
 
-/*
 func (s *DtlsSuite) TestFailedClient(c *C) {
 
 	peer, err := client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5687", Identity: "myIdentity", HandshakeTimeout: time.Second * 5})
@@ -179,7 +172,7 @@ func (s *DtlsSuite) TestFailedClient(c *C) {
 	peer, err = client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: "xxx", HandshakeTimeout: time.Second * 5})
 	c.Assert(peer, IsNil)
 	c.Assert(err.Error(), Equals, "dtls: no psk could be found")
-}*/
+}
 
 /*
 func (s *DtlsSuite) TestLoopback(c *C) {

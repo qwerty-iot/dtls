@@ -23,6 +23,12 @@ func newNonce(iv []byte, epoch uint16, seq uint64) []byte {
 	binary.Write(nonce, binary.BigEndian, seq)
 	return nonce.Bytes()
 }
+func newNonceFromBytes(iv []byte, data []byte) []byte {
+	nonce := new(bytes.Buffer)
+	nonce.Write(iv)
+	nonce.Write(data)
+	return nonce.Bytes()
+}
 
 func newAad(epoch uint16, seq uint64, msgType uint8, dataLen uint16) []byte {
 	w := newByteWriter()

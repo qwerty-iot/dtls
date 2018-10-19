@@ -38,7 +38,7 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 			iv = s.KeyBlock.ClientIV
 			key = s.KeyBlock.ClientWriteKey
 		}
-		nonce := newNonce(iv, rec.Epoch, rec.Sequence)
+		nonce := newNonceFromBytes(iv, rec.Data[:8])
 		aad := newAad(rec.Epoch, rec.Sequence, uint8(rec.ContentType), uint16(len(rec.Data)-16))
 		clearText, err := dataDecrypt(rec.Data[8:], nonce, key, aad, s.peer.String())
 		if err != nil {
