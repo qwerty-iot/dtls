@@ -43,6 +43,7 @@ type session struct {
 	compressionMethods []CompressionMethod
 	encrypt            bool
 	decrypt            bool
+	resumed            bool
 }
 
 func newClientSession(peer TransportPeer) *session {
@@ -88,6 +89,7 @@ func (s *session) reset() {
 	}
 	s.decrypt = false
 	s.encrypt = false
+	s.resumed = false
 	s.epoch = 0
 	s.sequenceNumber = 0
 	s.handshake.state = ""

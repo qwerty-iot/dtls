@@ -152,6 +152,7 @@ type PeerParams struct {
 	Addr             string
 	Identity         string
 	HandshakeTimeout time.Duration
+	SessionId        []byte
 }
 
 func (l *Listener) AddPeer(addr string, identity string) (*Peer, error) {
@@ -169,6 +170,9 @@ func (l *Listener) AddPeerWithParams(params *PeerParams) (*Peer, error) {
 		peer.session.compressionMethods = l.compressionMethods
 	}
 	peer.session.Client.Identity = params.Identity
+	if params.SessionId != nil && len(params.SessionId) != 0 {
+		peer.session.Id = params.SessionId
+	}
 	l.mux.Lock()
 	l.peers[peer.peer.String()] = peer
 	l.mux.Unlock()

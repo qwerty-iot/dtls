@@ -3,6 +3,7 @@ package dtls
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -22,13 +23,17 @@ type clientHello struct {
 	compressionMethods    []CompressionMethod
 }
 
-func (h *clientHello) Init(randomBytes []byte, cookie []byte, cipherSuites []CipherSuite, compressionMethods []CompressionMethod) error {
-	if len(randomBytes)<4 {
+func (h *clientHello) Init(sessionId []byte, randomBytes []byte, cookie []byte, cipherSuites []CipherSuite, compressionMethods []CompressionMethod) error {
+	if len(randomBytes) < 4 {
 		return errors.New("dtls: random data underflow")
 	}
 	h.version = DtlsVersion12
 	h.randomBytes = randomBytes
 	h.randomTime = binary.BigEndian.Uint32(h.randomBytes[:4])
+	if sessionId != nil {
+		h.sessionId = sessionId
+		h.sessionIdLen = uint8(len(sessionId))
+	}
 	if cookie != nil {
 		h.cookie = cookie
 		h.cookieLen = uint8(len(cookie))
@@ -121,6 +126,18 @@ func (h *clientHello) GetRandom() (time.Time, []byte) {
 
 func (h *clientHello) GetCookie() []byte {
 	return h.cookie
+}
+
+func (h *clientHello) HasSessionId() bool {
+	return h.sessionIdLen > 0
+}
+
+func (h *clientHello) GetSessionId() []byte {
+	return h.sessionId
+}
+
+func (h *clientHello) GetSessionIdStr() string {
+	return hex.EncodeToString(h.sessionId)
 }
 
 func (h *clientHello) GetCipherSuites() []CipherSuite {

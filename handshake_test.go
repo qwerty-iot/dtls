@@ -93,7 +93,7 @@ func (s *HandshakeSuite) TestClientHelloEncode(c *C) {
 	cookie := randomBytes(16)
 
 	hs := newHandshake(handshakeType_ClientHello)
-	hs.ClientHello.Init(w.Bytes(), cookie, []CipherSuite{CipherSuite_TLS_PSK_WITH_AES_128_CCM_8}, []CompressionMethod{CompressionMethod_Null})
+	hs.ClientHello.Init(nil, w.Bytes(), cookie, []CipherSuite{CipherSuite_TLS_PSK_WITH_AES_128_CCM_8}, []CompressionMethod{CompressionMethod_Null})
 	hs.ClientHello.sessionId = randomBytes(24)
 	hs.ClientHello.sessionIdLen = 24
 	hsbytes := hs.Bytes()

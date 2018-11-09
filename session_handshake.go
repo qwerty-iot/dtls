@@ -1,6 +1,7 @@
 package dtls
 
 import (
+	"encoding/hex"
 	"errors"
 	"reflect"
 	"time"
@@ -54,6 +55,9 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 				logWarn(s.peer.String(), "dtls: read decryption error: %s", err.Error())
 				return nil, nil, err
 			}
+		}
+		if s.handshake.firstDecrypt {
+			s.handshake.firstDecrypt = false
 		}
 
 		rec.SetData(clearText)
@@ -123,7 +127,7 @@ func (s *session) generateCookie() {
 
 func (s *session) startHandshake() error {
 	reqHs := newHandshake(handshakeType_ClientHello)
-	reqHs.ClientHello.Init(s.Client.Random, nil, s.cipherSuites, s.compressionMethods)
+	reqHs.ClientHello.Init(s.Id, s.Client.Random, nil, s.cipherSuites, s.compressionMethods)
 
 	err := s.writeHandshake(reqHs)
 	if err != nil {
@@ -180,6 +184,28 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 					break
 				}
 				s.Client.RandomTime, s.Client.Random = rspHs.ClientHello.GetRandom()
+				if rspHs.ClientHello.HasSessionId() {
+					s.Id = rspHs.ClientHello.GetSessionId()
+					//resuming a session
+					s.Client.Identity = getIdentityFromCache(rspHs.ClientHello.GetSessionIdStr())
+					if len(s.Client.Identity) > 0 {
+						logDebug(s.peer.String(), "dtls: resuming previously established session, set identity: %s", s.Client.Identity)
+						s.resumed = true
+					} else {
+						logDebug(s.peer.String(), "dtls: tried to resume session, but it was not found")
+						s.resumed = false
+					}
+
+					psk := GetPskFromKeystore(s.Client.Identity, s.peer.String())
+					if psk == nil {
+						err = errors.New("dtls: no valid psk for identity")
+						break
+					}
+					s.Psk = psk
+					s.initKeyBlock()
+				} else {
+					s.resumed = false
+				}
 				s.handshake.state = "recv-clienthello"
 			}
 		case handshakeType_HelloVerifyRequest:
@@ -195,7 +221,12 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			s.handshake.state = "recv-helloverifyrequest"
 		case handshakeType_ServerHello:
 			s.Server.RandomTime, s.Server.Random = rspHs.ServerHello.GetRandom()
-			s.Id = rspHs.ServerHello.GetSessionId()
+			if reflect.DeepEqual(s.Id, rspHs.ServerHello.GetSessionId()) {
+				//resuming session
+				s.resumed = true
+			} else {
+				s.Id = rspHs.ServerHello.GetSessionId()
+			}
 			s.handshake.state = "recv-serverhello"
 		case handshakeType_ClientKeyExchange:
 			s.Client.Identity = string(rspHs.ClientKeyExchange.GetIdentity())
@@ -223,6 +254,9 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				label = "client"
 			}
 			if rspHs.Finished.Match(s.KeyBlock.MasterSecret, s.handshake.savedHash, label) {
+				if s.Type == SessionType_Server {
+					setIdentityToCache(hex.EncodeToString(s.Id), s.Client.Identity)
+				}
 				logDebug(s.peer.String(), "dtls: encryption matches, handshake complete")
 			} else {
 				s.handshake.state = "failed"
@@ -271,7 +305,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 
 		case "recv-helloverifyrequest":
 			reqHs = newHandshake(handshakeType_ClientHello)
-			err = reqHs.ClientHello.Init(s.Client.Random, s.handshake.cookie, s.cipherSuites, s.compressionMethods)
+			err = reqHs.ClientHello.Init(s.Id, s.Client.Random, s.handshake.cookie, s.cipherSuites, s.compressionMethods)
 			if err != nil {
 				break
 			}
@@ -280,7 +314,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				break
 			}
 		case "recv-serverhellodone":
-			reqHs = newHandshake(handshakeType_ClientKeyExchange)
+
 			if len(s.Server.Identity) > 0 {
 				psk := GetPskFromKeystore(s.Server.Identity, s.peer.String())
 				if len(psk) > 0 {
@@ -297,11 +331,17 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 					break
 				}
 			}
-			reqHs.ClientKeyExchange.Init([]byte(s.Client.Identity))
-			err = s.writeHandshake(reqHs)
-			if err != nil {
-				break
+
+			if !s.resumed {
+				reqHs = newHandshake(handshakeType_ClientKeyExchange)
+
+				reqHs.ClientKeyExchange.Init([]byte(s.Client.Identity))
+				err = s.writeHandshake(reqHs)
+				if err != nil {
+					break
+				}
 			}
+
 			s.initKeyBlock()
 
 			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
