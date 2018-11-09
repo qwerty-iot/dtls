@@ -202,8 +202,9 @@ func (c *ccm) Open(dst, nonce, ciphertext, adata []byte) ([]byte, error) {
 		return nil, errors.New("ccm: ciphertext too long")
 	}
 
-	tag := ciphertext[len(ciphertext)-int(c.M):]
-	ciphertext = ciphertext[:len(ciphertext)-int(c.M)]
+	var tag = make([]byte, int(c.M), int(c.M))
+	copy(tag, ciphertext[len(ciphertext)-int(c.M):])
+	ciphertextWithoutTag := ciphertext[:len(ciphertext)-int(c.M)]
 
 	var iv, s0 [ccmBlockSize]byte
 	iv[0] = c.L - 1
@@ -217,8 +218,8 @@ func (c *ccm) Open(dst, nonce, ciphertext, adata []byte) ([]byte, error) {
 
 	// Cannot decrypt directly to dst since we're not supposed to
 	// reveal the plaintext to the caller if authentication fails.
-	plaintext := make([]byte, len(ciphertext))
-	stream.XORKeyStream(plaintext, ciphertext)
+	plaintext := make([]byte, len(ciphertextWithoutTag))
+	stream.XORKeyStream(plaintext, ciphertextWithoutTag)
 	expectedTag, err := c.tag(nonce, plaintext, adata)
 	if err != nil {
 		return nil, err
