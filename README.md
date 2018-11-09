@@ -17,17 +17,18 @@ Key Features
 * Supports both client and server via UDP
 * Supports TLS_PSK_WITH_AES_128_CCM_8 cipher [RFC-6655](https://tools.ietf.org/html/rfc6655)
 * Supports pre-shared key authentication, does not support certificate based authentication
+* Supports DTLS session resumption
 * Designed for OMA LWM2M comliance [LWM2M](http://technical.openmobilealliance.org/Technical/technical-information/release-program/current-releases/oma-lightweightm2m-v1-0)
 
 TODO
 ----
-* Implement alerting on key failures
 * Implement session renegotiation
 * Implement packet retransmission for handshake
 * Implement out of order handshake processing
 * Implement replay detection
 * Implement client hello stateless cookie handling
 * Improve parallel processing of incoming packets
+* Add interface for custom DTLS session cache storage
 
 Samples
 -------
