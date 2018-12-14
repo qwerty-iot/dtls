@@ -1,6 +1,7 @@
 package dtls
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"reflect"
@@ -91,6 +92,22 @@ func (s *session) writeHandshake(hs *handshake) error {
 	return s.writeRecord(rec)
 }
 
+func (s *session) writeHandshakes(hss []*handshake) error {
+	recs := make([]*record, len(hss))
+	for idx, hs := range hss {
+		hs.Header.Sequence = s.handshake.seq
+		s.handshake.seq += 1
+
+		rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), hs.Bytes())
+
+		s.updateHash(rec.Data)
+
+		logDebug(s.peer.String(), "dtls: write (handshake) %s", hs.Print())
+		recs[idx] = rec
+	}
+	return s.writeRecords(recs)
+}
+
 func (s *session) writeRecord(rec *record) error {
 	if s.encrypt {
 		var iv []byte
@@ -118,6 +135,19 @@ func (s *session) writeRecord(rec *record) error {
 	} else {
 		logDebug(s.peer.String(), "dtls: write (unencrypted) %s", rec.Print())
 		return s.peer.WritePacket(rec.Bytes())
+	}
+}
+
+func (s *session) writeRecords(recs []*record) error {
+	if s.encrypt {
+		return errors.New("dtls: can't write multiple encrypted records.")
+	} else {
+		buf := bytes.Buffer{}
+		for _, rec := range recs {
+			logDebug(s.peer.String(), "dtls: write (unencrypted) %s", rec.Print())
+			buf.Write(rec.Bytes())
+		}
+		return s.peer.WritePacket(buf.Bytes())
 	}
 }
 
@@ -291,18 +321,14 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			//TODO consider adding serverkeyexchange, not sure what to recommend as a server identity
 			reqHs = newHandshake(handshakeType_ServerHello)
 			reqHs.ServerHello.Init(s.Server.Random, s.Id)
-			err = s.writeHandshake(reqHs)
+
+			reqHs2 := newHandshake(handshakeType_ServerHelloDone)
+			reqHs2.ServerHelloDone.Init()
+
+			err = s.writeHandshakes([]*handshake{reqHs, reqHs2})
 			if err != nil {
 				break
 			}
-
-			reqHs = newHandshake(handshakeType_ServerHelloDone)
-			reqHs.ServerHelloDone.Init()
-			err = s.writeHandshake(reqHs)
-			if err != nil {
-				break
-			}
-
 		case "recv-helloverifyrequest":
 			reqHs = newHandshake(handshakeType_ClientHello)
 			err = reqHs.ClientHello.Init(s.Id, s.Client.Random, s.handshake.cookie, s.cipherSuites, s.compressionMethods)
