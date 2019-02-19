@@ -22,6 +22,9 @@ type msg struct {
 	peer *Peer
 }
 
+// This callback is invoked each time a handshake completes, if the handshake failed, the reason is stored in error
+var HandshakeCompleteCallback func(string, string, error)
+
 func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, error) {
 	utrans, err := newUdpTransport(listener, readTimeout)
 	if err != nil {
@@ -84,6 +87,7 @@ func receiver(l *Listener) {
 				logWarn(peer.String(), "dtls: [%s][%s] received warning alert: %s", l.transport.Type(), l.transport.Local(), alertDescToString(alert.Desc))
 			} else {
 				l.RemovePeer(p, AlertDesc_Noop)
+
 				logWarn(peer.String(), "dtls: [%s][%s] received fatal alert: %s", l.transport.Type(), l.transport.Local(), alertDescToString(alert.Desc))
 			}
 		} else if rec.IsAppData() && !p.session.isHandshakeDone() {

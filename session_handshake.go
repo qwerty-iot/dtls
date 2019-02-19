@@ -407,6 +407,9 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 	if err != nil {
 		s.handshake.state = "failed"
 		s.handshake.err = err
+		if HandshakeCompleteCallback != nil {
+			HandshakeCompleteCallback(s.peer.String(), s.Client.Identity, err)
+		}
 	FORERR:
 		for {
 			select {
@@ -421,6 +424,9 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 		s.handshake.err = nil
 	}
 	if s.handshake.state == "finished" {
+		if HandshakeCompleteCallback != nil {
+			HandshakeCompleteCallback(s.peer.String(), s.Client.Identity, nil)
+		}
 	FORFIN:
 		for {
 			select {
