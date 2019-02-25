@@ -23,7 +23,7 @@ type msg struct {
 }
 
 // This callback is invoked each time a handshake completes, if the handshake failed, the reason is stored in error
-var HandshakeCompleteCallback func(string, string, error)
+var HandshakeCompleteCallback func(string, string, time.Duration, error)
 
 func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, error) {
 	utrans, err := newUdpTransport(listener, readTimeout)

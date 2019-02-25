@@ -12,10 +12,11 @@ const (
 )
 
 type session struct {
-	Id     []byte
-	Type   string
-	peer   TransportPeer
-	Client struct {
+	Id      []byte
+	Type    string
+	peer    TransportPeer
+	started time.Time
+	Client  struct {
 		Identity   string
 		RandomTime time.Time
 		Random     []byte
@@ -47,10 +48,10 @@ type session struct {
 }
 
 func newClientSession(peer TransportPeer) *session {
-	session := &session{Type: SessionType_Client, peer: peer, hash: sha256.New(),
+	session := &session{Type: SessionType_Client, started: time.Now(), peer: peer, hash: sha256.New(),
 		cipherSuites: []CipherSuite{CipherSuite_TLS_PSK_WITH_AES_128_CCM_8}, compressionMethods: []CompressionMethod{CompressionMethod_Null}}
 	session.handshake.done = make(chan error)
-	session.Client.RandomTime = time.Now()
+	session.Client.RandomTime = session.started
 	randBytes := randomBytes(28)
 
 	//write full random buffer
@@ -62,10 +63,10 @@ func newClientSession(peer TransportPeer) *session {
 }
 
 func newServerSession(peer TransportPeer) *session {
-	session := &session{Type: SessionType_Server, peer: peer, hash: sha256.New(), Id: randomBytes(32),
+	session := &session{Type: SessionType_Server, started: time.Now(), peer: peer, hash: sha256.New(), Id: randomBytes(32),
 		cipherSuites: []CipherSuite{CipherSuite_TLS_PSK_WITH_AES_128_CCM_8}, compressionMethods: []CompressionMethod{CompressionMethod_Null}}
 	session.handshake.done = make(chan error)
-	session.Server.RandomTime = time.Now()
+	session.Server.RandomTime = session.started
 	randBytes := randomBytes(28)
 
 	//write full random buffer
