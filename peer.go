@@ -2,6 +2,7 @@ package dtls
 
 import (
 	"errors"
+	"sync"
 	"time"
 )
 
@@ -9,6 +10,7 @@ type Peer struct {
 	peer    TransportPeer
 	session *session
 	queue   chan []byte
+	mux     sync.Mutex
 }
 
 func (p *Peer) UseQueue(en bool) {
@@ -52,4 +54,12 @@ func (p *Peer) Read(timeout time.Duration) ([]byte, error) {
 		return nil, errors.New("dtls: queued read timed out")
 	}
 	return nil, nil
+}
+
+func (p *Peer) Lock() {
+	p.mux.Lock()
+}
+
+func (p *Peer) Unlock() {
+	p.mux.Unlock()
 }

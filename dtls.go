@@ -51,9 +51,12 @@ func receiver(l *Listener) {
 		return
 	}
 
+	l.wg.Add(1)
+	go receiver(l)
+
 	l.mux.Lock()
 	p, found := l.peers[peer.String()]
-	l.mux.Unlock()
+
 	if !found {
 		//this is where server code will go
 		logDebug(peer.String(), "dtls: [%s][%s] received from unknown peer", l.transport.Type(), l.transport.Local())
@@ -61,6 +64,9 @@ func receiver(l *Listener) {
 	} else {
 		logDebug(peer.String(), "dtls: [%s][%s] received from peer", l.transport.Type(), l.transport.Local())
 	}
+	l.mux.Unlock()
+
+	p.Lock()
 
 	for {
 		rec, rem, err := p.session.parseRecord(data)
@@ -108,8 +114,8 @@ func receiver(l *Listener) {
 		}
 	}
 
-	l.wg.Add(1)
-	go receiver(l)
+	p.Unlock()
+
 	l.wg.Done()
 	//TODO need to queue records for each session so that we can process multiple in parallel
 }
@@ -146,9 +152,10 @@ func (l *Listener) addServerPeer(tpeer TransportPeer) (*Peer, error) {
 	if l.compressionMethods != nil {
 		peer.session.compressionMethods = l.compressionMethods
 	}
-	l.mux.Lock()
+	//disabled lock because it is included in the existing lock
+	//l.mux.Lock()
 	l.peers[peer.peer.String()] = peer
-	l.mux.Unlock()
+	//l.mux.Unlock()
 	return peer, nil
 }
 
