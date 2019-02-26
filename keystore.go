@@ -1,7 +1,7 @@
 package dtls
 
 type Keystore interface {
-	GetPsk(identity string, remoteAddr string) []byte
+	GetPsk(identity string, remoteAddr string) ([]byte, error)
 }
 
 var keystores []Keystore = []Keystore{NewKeystoreInMemory()}
@@ -12,8 +12,10 @@ func SetKeyStores(ks []Keystore) {
 
 func GetPskFromKeystore(identity string, remoteAddr string) []byte {
 	for _, ks := range keystores {
-		if psk := ks.GetPsk(identity, remoteAddr); psk != nil {
+		if psk, err := ks.GetPsk(identity, remoteAddr); psk != nil {
 			return psk
+		} else if err != nil {
+			return nil
 		}
 	}
 	return nil
@@ -32,10 +34,10 @@ func (ks *KeystoreInMemory) AddKey(identity string, psk []byte) {
 	return
 }
 
-func (ks *KeystoreInMemory) GetPsk(identity string, remoteAddr string) []byte {
+func (ks *KeystoreInMemory) GetPsk(identity string, remoteAddr string) ([]byte, error) {
 	psk, found := ks.keys[identity]
 	if !found {
-		return nil
+		return nil, nil
 	}
-	return psk
+	return psk, nil
 }

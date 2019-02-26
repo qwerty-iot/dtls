@@ -207,6 +207,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				s.sequenceNumber = uint64(rspHs.Header.Sequence)
 				s.handshake.seq = rspHs.Header.Sequence
 				s.handshake.state = "recv-clienthello-initial"
+				s.started = time.Now()
 			} else {
 				if !reflect.DeepEqual(cookie, s.handshake.cookie) {
 					s.handshake.state = "failed"
