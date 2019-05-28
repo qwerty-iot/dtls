@@ -7,10 +7,11 @@ import (
 )
 
 type Peer struct {
-	peer    TransportPeer
-	session *session
-	queue   chan []byte
-	mux     sync.Mutex
+	peer     TransportPeer
+	session  *session
+	activity time.Time
+	queue    chan []byte
+	mux      sync.Mutex
 }
 
 func (p *Peer) UseQueue(en bool) {
@@ -33,12 +34,18 @@ func (p *Peer) SessionIdentity() string {
 	return p.session.Client.Identity
 }
 
+func (p *Peer) LastActivity() time.Time {
+	return p.activity
+}
+
 func (p *Peer) Close(alertDesc uint8) {
 	rec := newRecord(ContentType_Alert, p.session.getEpoch(), p.session.getNextSequence(), newAlert(AlertType_Fatal, alertDesc).Bytes())
-	p.session.writeRecord(rec)
+	p.activity = time.Now()
+	_ = p.session.writeRecord(rec)
 }
 
 func (p *Peer) Write(data []byte) error {
+	p.activity = time.Now()
 	rec := newRecord(ContentType_Appdata, p.session.getEpoch(), p.session.getNextSequence(), data)
 	return p.session.writeRecord(rec)
 }
@@ -49,11 +56,11 @@ func (p *Peer) Read(timeout time.Duration) ([]byte, error) {
 	}
 	select {
 	case b := <-p.queue:
+		p.activity = time.Now()
 		return b, nil
 	case <-time.After(timeout):
 		return nil, errors.New("dtls: queued read timed out")
 	}
-	return nil, nil
 }
 
 func (p *Peer) Lock() {

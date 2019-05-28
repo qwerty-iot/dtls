@@ -17,6 +17,8 @@ type Listener struct {
 	compressionMethods []CompressionMethod
 }
 
+var PeerInactivityTimeout = time.Hour * 24
+
 type msg struct {
 	data []byte
 	peer *Peer
@@ -32,6 +34,7 @@ func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, erro
 	}
 
 	l := &Listener{transport: utrans, peers: make(map[string]*Peer), readQueue: make(chan *msg, 128)}
+	go sweeper(l)
 	l.wg.Add(1)
 	go receiver(l)
 	return l, nil
@@ -118,6 +121,22 @@ func receiver(l *Listener) {
 
 	l.wg.Done()
 	//TODO need to queue records for each session so that we can process multiple in parallel
+}
+
+func sweeper(l *Listener) {
+	for {
+		if l.isShutdown {
+			logDebug("", "dtls: [%s][%s] sweeper shutting down", l.transport.Type(), l.transport.Local())
+			return
+		}
+		expiry := time.Now().Add(PeerInactivityTimeout * -1)
+		for _, peer := range l.peers {
+			if peer.activity.Before(expiry) {
+				_ = l.RemovePeer(peer, AlertDesc_Noop)
+			}
+		}
+		time.Sleep(time.Minute)
+	}
 }
 
 func (l *Listener) RemovePeer(peer *Peer, alertDesc uint8) error {
