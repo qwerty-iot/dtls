@@ -216,24 +216,25 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				}
 				s.Client.RandomTime, s.Client.Random = rspHs.ClientHello.GetRandom()
 				if rspHs.ClientHello.HasSessionId() {
-					s.Id = rspHs.ClientHello.GetSessionId()
 					//resuming a session
 					s.Client.Identity = getIdentityFromCache(rspHs.ClientHello.GetSessionIdStr())
 					if len(s.Client.Identity) > 0 {
+						s.Id = rspHs.ClientHello.GetSessionId()
 						logDebug(s.peer.String(), "dtls: resuming previously established session, set identity: %s", s.Client.Identity)
 						s.resumed = true
+
+						psk := GetPskFromKeystore(s.Client.Identity, s.peer.String())
+						if psk == nil {
+							err = errors.New("dtls: no valid psk for identity")
+							break
+						}
+						s.Psk = psk
+						s.initKeyBlock()
+
 					} else {
 						logDebug(s.peer.String(), "dtls: tried to resume session, but it was not found")
 						s.resumed = false
 					}
-
-					psk := GetPskFromKeystore(s.Client.Identity, s.peer.String())
-					if psk == nil {
-						err = errors.New("dtls: no valid psk for identity")
-						break
-					}
-					s.Psk = psk
-					s.initKeyBlock()
 				} else {
 					s.resumed = false
 				}
