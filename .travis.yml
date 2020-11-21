@@ -1,10 +1,9 @@
 language: go
 
 go:
-- 1.6.2
+- 1.15
 
 install:
-- go get gopkg.in/check.v1
 - go get github.com/bocajim/dtls
 
 script:

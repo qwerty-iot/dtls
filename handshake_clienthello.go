@@ -117,7 +117,7 @@ func (h *clientHello) Print() string {
 		comprStr = comprStr[:len(comprStr)-1]
 	}
 
-	return fmt.Sprintf("version[0x%X] randomData[%s][%X] sessionId[%X][%d] cookie[%X][%d] cipherSuites[%s][%d] compressionMethods[%v][%d]", h.version, time.Unix(int64(h.randomTime), 0).String(), h.randomBytes, h.sessionId, h.sessionIdLen, h.cookie, h.cookieLen, suitesStr, h.cipherSuitesLen, comprStr, h.compressionMethodsLen)
+	return fmt.Sprintf("version[0x%X] randomData[%s][%X] sessionId[%X][%d] cookie[%X][%d] advertisedCipherSuites[%s][%d] advertisedCompressionMethods[%v][%d]", h.version, time.Unix(int64(h.randomTime), 0).String(), h.randomBytes, h.sessionId, h.sessionIdLen, h.cookie, h.cookieLen, suitesStr, h.cipherSuitesLen, comprStr, h.compressionMethodsLen)
 }
 
 func (h *clientHello) GetRandom() (time.Time, []byte) {
@@ -142,6 +142,17 @@ func (h *clientHello) GetSessionIdStr() string {
 
 func (h *clientHello) GetCipherSuites() []CipherSuite {
 	return h.cipherSuites
+}
+
+func (h *clientHello) SelectCipherSuite(advertised []CipherSuite) CipherSuite {
+	for _, ad := range advertised {
+		for _, cipher := range h.cipherSuites {
+			if ad == cipher {
+				return cipher
+			}
+		}
+	}
+	return 0
 }
 
 func (h *clientHello) GetCompressionMethods() []CompressionMethod {

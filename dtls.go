@@ -25,7 +25,7 @@ type msg struct {
 }
 
 // This callback is invoked each time a handshake completes, if the handshake failed, the reason is stored in error
-var HandshakeCompleteCallback func(string, string, time.Duration, error)
+var HandshakeCompleteCallback func(*Peer, string, time.Duration, error)
 
 func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, error) {
 	utrans, err := newUdpTransport(listener, readTimeout)
@@ -42,14 +42,14 @@ func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, erro
 
 func receiver(l *Listener) {
 	if l.isShutdown {
-		logDebug("", "dtls: [%s][%s] receiver shutting down", l.transport.Type(), l.transport.Local())
+		logDebug(nil, "dtls: [%s][%s] receiver shutting down", l.transport.Type(), l.transport.Local())
 		l.wg.Done()
 		return
 	}
-	logDebug("", "dtls: [%s][%s] waiting for packet", l.transport.Type(), l.transport.Local())
+	logDebug(nil, "dtls: [%s][%s] waiting for packet", l.transport.Type(), l.transport.Local())
 	data, peer, err := l.transport.ReadPacket()
 	if err != nil {
-		logError("", "[%s][%s] failed to read packet: %s", l.transport.Type(), l.transport.Local(), err.Error())
+		logError(nil, err, "dtls: [%s][%s] failed to read packet", l.transport.Type(), l.transport.Local())
 		l.wg.Done()
 		return
 	}
@@ -62,10 +62,10 @@ func receiver(l *Listener) {
 
 	if !found {
 		//this is where server code will go
-		logDebug(peer.String(), "dtls: [%s][%s] received from unknown peer", l.transport.Type(), l.transport.Local())
 		p, _ = l.addServerPeer(peer)
+		logDebug(p, "dtls: [%s][%s] received from unknown endpoint", l.transport.Type(), l.transport.Local())
 	} else {
-		logDebug(peer.String(), "dtls: [%s][%s] received from peer", l.transport.Type(), l.transport.Local())
+		logDebug(p, "dtls: [%s][%s] received from endpoint", l.transport.Type(), l.transport.Local())
 	}
 	l.mux.Unlock()
 
@@ -74,34 +74,34 @@ func receiver(l *Listener) {
 	for {
 		rec, rem, err := p.session.parseRecord(data)
 		if err != nil {
-			logWarn(peer.String(), "dtls: [%s][%s] error parsing record: %s", l.transport.Type(), l.transport.Local(), err.Error())
+			logWarn(p, err, "dtls: [%s][%s] error parsing record", l.transport.Type(), l.transport.Local())
 			l.RemovePeer(p, AlertDesc_DecodeError)
 			break
 		}
 
 		if rec.IsHandshake() {
-			logDebug(peer.String(), "dtls: [%s][%s] handshake in progress", l.transport.Type(), l.transport.Local())
+			logDebug(p, "dtls: [%s][%s] handshake received", l.transport.Type(), l.transport.Local())
 			if err := p.session.processHandshakePacket(rec); err != nil {
 				l.RemovePeer(p, AlertDesc_HandshakeFailure)
-				logWarn(peer.String(), "dtls: [%s][%s] failed to complete handshake: %s", l.transport.Type(), l.transport.Local(), err.Error())
+				logWarn(p, err, "dtls: [%s][%s] failed to complete handshake", l.transport.Type(), l.transport.Local())
 			}
 		} else if rec.IsAlert() {
 			//handle alert
 			alert, err := parseAlert(rec.Data)
 			if err != nil {
 				l.RemovePeer(p, AlertDesc_DecodeError)
-				logWarn(peer.String(), "dtls: [%s][%s] failed to parse alert: %s", l.transport.Type(), l.transport.Local(), err.Error())
+				logWarn(p, err, "dtls: [%s][%s] failed to parse alert", l.transport.Type(), l.transport.Local())
 			}
 			if alert.Type == AlertType_Warning {
-				logWarn(peer.String(), "dtls: [%s][%s] received warning alert: %s", l.transport.Type(), l.transport.Local(), alertDescToString(alert.Desc))
+				logWarn(p, nil, "dtls: [%s][%s] received warning alert: %s", l.transport.Type(), l.transport.Local(), alertDescToString(alert.Desc))
 			} else {
 				l.RemovePeer(p, AlertDesc_Noop)
 
-				logWarn(peer.String(), "dtls: [%s][%s] received fatal alert: %s", l.transport.Type(), l.transport.Local(), alertDescToString(alert.Desc))
+				logWarn(p, nil, "dtls: [%s][%s] received fatal alert: %s", l.transport.Type(), l.transport.Local(), alertDescToString(alert.Desc))
 			}
 		} else if rec.IsAppData() && !p.session.isHandshakeDone() {
 			l.RemovePeer(p, AlertDesc_DecryptError)
-			logWarn(peer.String(), "dtls: [%s][%s] received app data message without completing handshake", l.transport.Type(), l.transport.Local())
+			logWarn(p, nil, "dtls: [%s][%s] received app data message without completing handshake", l.transport.Type(), l.transport.Local())
 		} else {
 			if p.queue != nil {
 				p.queue <- rec.Data
@@ -126,12 +126,13 @@ func receiver(l *Listener) {
 func sweeper(l *Listener) {
 	for {
 		if l.isShutdown {
-			logDebug("", "dtls: [%s][%s] sweeper shutting down", l.transport.Type(), l.transport.Local())
+			logDebug(nil, "dtls: [%s][%s] sweeper shutting down", l.transport.Type(), l.transport.Local())
 			return
 		}
 		expiry := time.Now().Add(PeerInactivityTimeout * -1)
 		for _, peer := range l.peers {
 			if peer.activity.Before(expiry) {
+				logDebug(peer, "dtls: sweeper removing peer")
 				_ = l.RemovePeer(peer, AlertDesc_Noop)
 			}
 		}
@@ -162,18 +163,13 @@ func (l *Listener) RemovePeerByAddr(addr string, alertDesc uint8) error {
 	return nil
 }
 
-func (l *Listener) addServerPeer(tpeer TransportPeer) (*Peer, error) {
-	peer := &Peer{peer: tpeer}
-	peer.session = newServerSession(peer.peer)
-	if l.cipherSuites != nil {
-		peer.session.cipherSuites = l.cipherSuites
-	}
-	if l.compressionMethods != nil {
-		peer.session.compressionMethods = l.compressionMethods
-	}
+func (l *Listener) addServerPeer(tpeer TransportEndpoint) (*Peer, error) {
+	peer := &Peer{transport: tpeer}
+	peer.session = newServerSession(peer)
+	peer.session.listener = l
 	//disabled lock because it is included in the existing lock
 	//l.mux.Lock()
-	l.peers[peer.peer.String()] = peer
+	l.peers[peer.RemoteAddr()] = peer
 	//l.mux.Unlock()
 	return peer, nil
 }
@@ -190,26 +186,29 @@ func (l *Listener) AddPeer(addr string, identity string) (*Peer, error) {
 }
 
 func (l *Listener) AddPeerWithParams(params *PeerParams) (*Peer, error) {
-	peer := &Peer{peer: l.transport.NewPeer(params.Addr)}
+	peer := &Peer{transport: l.transport.NewEndpoint(params.Addr), activity: time.Now()}
 	peer.UseQueue(true)
-	peer.session = newClientSession(peer.peer)
-	if l.cipherSuites != nil {
-		peer.session.cipherSuites = l.cipherSuites
-	}
-	if l.compressionMethods != nil {
-		peer.session.compressionMethods = l.compressionMethods
-	}
-	peer.session.Client.Identity = params.Identity
+	peer.session = newClientSession(peer)
+	peer.name = peer.RemoteAddr()
+	peer.session.listener = l
+	peer.session.Identity = params.Identity
 	if params.SessionId != nil && len(params.SessionId) != 0 {
 		peer.session.Id = params.SessionId
 	}
 	l.mux.Lock()
-	l.peers[peer.peer.String()] = peer
+	l.peers[peer.RemoteAddr()] = peer
 	l.mux.Unlock()
-	peer.session.startHandshake()
+	err := peer.session.startHandshake()
+	if err != nil {
+		l.mux.Lock()
+		delete(l.peers, peer.RemoteAddr())
+		l.mux.Unlock()
+		logWarn(peer, err, "dtls: failed to start handshake")
+		return nil, err
+	}
 	if err := peer.session.waitForHandshake(params.HandshakeTimeout); err != nil {
 		l.mux.Lock()
-		delete(l.peers, peer.peer.String())
+		delete(l.peers, peer.RemoteAddr())
 		l.mux.Unlock()
 		return nil, err
 	}
@@ -224,7 +223,7 @@ func (l *Listener) Read() ([]byte, *Peer) {
 
 func (l *Listener) Shutdown() error {
 	l.isShutdown = true
-	//gracefully send alerts to each connected peer
+	//gracefully send alerts to each connected transport
 	err := l.transport.Shutdown()
 	l.wg.Wait()
 	return err

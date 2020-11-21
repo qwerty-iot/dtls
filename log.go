@@ -13,7 +13,7 @@ const (
 	LogLevelDebug string = "debug"
 )
 
-type LogFunc func(ts time.Time, level string, peer string, msg string)
+type LogFunc func(ts time.Time, level string, peer *Peer, err error, msg string)
 
 var logFunc LogFunc = defaultLogFunc
 var logLevel int = 0
@@ -37,34 +37,38 @@ func SetLogLevel(level string) {
 	}
 }
 
-func defaultLogFunc(ts time.Time, level string, peer string, msg string) {
-	log.Printf(" [" + level + "] [" + peer + "] " + msg)
+func defaultLogFunc(ts time.Time, level string, peer *Peer, err error, msg string) {
+	if err != nil {
+		log.Printf(" [" + level + "] [" + peer.RemoteAddr() + "] " + msg + "(err: " + err.Error() + ")")
+	} else {
+		log.Printf(" [" + level + "] [" + peer.RemoteAddr() + "] " + msg)
+	}
 }
 
-func logError(peer, f string, args ...interface{}) {
+func logError(peer *Peer, err error, f string, args ...interface{}) {
 	if logLevel < 1 {
 		return
 	}
-	logFunc(time.Now(), LogLevelError, peer, fmt.Sprintf(f, args...))
+	logFunc(time.Now(), LogLevelError, peer, err, fmt.Sprintf(f, args...))
 }
 
-func logWarn(peer, f string, args ...interface{}) {
+func logWarn(peer *Peer, err error, f string, args ...interface{}) {
 	if logLevel < 2 {
 		return
 	}
-	logFunc(time.Now(), LogLevelWarn, peer, fmt.Sprintf(f, args...))
+	logFunc(time.Now(), LogLevelWarn, peer, err, fmt.Sprintf(f, args...))
 }
 
-func logInfo(peer, f string, args ...interface{}) {
+func logInfo(peer *Peer, f string, args ...interface{}) {
 	if logLevel < 3 {
 		return
 	}
-	logFunc(time.Now(), LogLevelInfo, peer, fmt.Sprintf(f, args...))
+	logFunc(time.Now(), LogLevelInfo, peer, nil, fmt.Sprintf(f, args...))
 }
 
-func logDebug(peer, f string, args ...interface{}) {
+func logDebug(peer *Peer, f string, args ...interface{}) {
 	if logLevel < 4 {
 		return
 	}
-	logFunc(time.Now(), LogLevelDebug, peer, fmt.Sprintf(f, args...))
+	logFunc(time.Now(), LogLevelDebug, peer, nil, fmt.Sprintf(f, args...))
 }

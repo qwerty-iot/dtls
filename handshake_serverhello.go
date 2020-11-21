@@ -16,13 +16,13 @@ type serverHello struct {
 	compressionMethod CompressionMethod
 }
 
-func (h *serverHello) Init(randomBytes []byte, sessionId []byte) {
+func (h *serverHello) Init(randomBytes []byte, sessionId []byte, cipherSuite CipherSuite) {
 	h.version = DtlsVersion12
 	h.randomBytes = randomBytes
 	h.randomTime = binary.BigEndian.Uint32(h.randomBytes[:4])
 	h.sessionId = sessionId
 	h.sessionIdLen = uint8(len(h.sessionId))
-	h.cipherSuite = CipherSuite_TLS_PSK_WITH_AES_128_CCM_8
+	h.cipherSuite = cipherSuite
 	h.compressionMethod = CompressionMethod_Null
 }
 

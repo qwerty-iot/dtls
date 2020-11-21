@@ -12,25 +12,25 @@ const (
 )
 
 type session struct {
-	Id      []byte
-	Type    string
-	peer    TransportPeer
-	started time.Time
-	Client  struct {
-		Identity   string
+	Id       []byte
+	Type     string
+	peer     *Peer
+	listener *Listener
+	started  time.Time
+	client   struct {
 		RandomTime time.Time
 		Random     []byte
 	}
-	Server struct {
-		Identity   string
+	server struct {
 		RandomTime time.Time
 		Random     []byte
 	}
+	Identity       string
 	Psk            []byte
 	epoch          uint16
 	sequenceNumber uint64
 	hash           hash.Hash
-	KeyBlock       *keyBlock
+	keyBlock       *keyBlock
 	handshake      struct {
 		state        string
 		cookie       []byte
@@ -40,53 +40,51 @@ type session struct {
 		firstDecrypt bool
 		done         chan error
 	}
-	cipherSuites       []CipherSuite
-	compressionMethods []CompressionMethod
-	encrypt            bool
-	decrypt            bool
-	resumed            bool
+	cipher              Cipher
+	selectedCipherSuite CipherSuite
+	encrypt             bool
+	decrypt             bool
+	resumed             bool
 }
 
-func newClientSession(peer TransportPeer) *session {
-	session := &session{Type: SessionType_Client, started: time.Now(), peer: peer, hash: sha256.New(),
-		cipherSuites: []CipherSuite{CipherSuite_TLS_PSK_WITH_AES_128_CCM_8}, compressionMethods: []CompressionMethod{CompressionMethod_Null}}
+func newClientSession(peer *Peer) *session {
+	session := &session{Type: SessionType_Client, started: time.Now(), peer: peer, hash: sha256.New()}
 	session.handshake.done = make(chan error)
-	session.Client.RandomTime = session.started
+	session.client.RandomTime = session.started
 	randBytes := randomBytes(28)
 
 	//write full random buffer
 	w := newByteWriter()
-	w.PutUint32(uint32(session.Client.RandomTime.Unix()))
+	w.PutUint32(uint32(session.client.RandomTime.Unix()))
 	w.PutBytes(randBytes)
-	session.Client.Random = w.Bytes()
+	session.client.Random = w.Bytes()
 	return session
 }
 
-func newServerSession(peer TransportPeer) *session {
-	session := &session{Type: SessionType_Server, started: time.Now(), peer: peer, hash: sha256.New(), Id: randomBytes(32),
-		cipherSuites: []CipherSuite{CipherSuite_TLS_PSK_WITH_AES_128_CCM_8}, compressionMethods: []CompressionMethod{CompressionMethod_Null}}
+func newServerSession(peer *Peer) *session {
+	session := &session{Type: SessionType_Server, started: time.Now(), peer: peer, hash: sha256.New(), Id: randomBytes(32)}
 	session.handshake.done = make(chan error)
-	session.Server.RandomTime = session.started
+	session.server.RandomTime = session.started
 	randBytes := randomBytes(28)
 
 	//write full random buffer
 	w := newByteWriter()
-	w.PutUint32(uint32(session.Server.RandomTime.Unix()))
+	w.PutUint32(uint32(session.server.RandomTime.Unix()))
 	w.PutBytes(randBytes)
-	session.Server.Random = w.Bytes()
+	session.server.Random = w.Bytes()
 	return session
 }
 
 func (s *session) updateHash(data []byte) {
 	if DebugHandshakeHash {
-		logDebug(s.peer.String(), "dtls: updating hash with [%X]", data)
+		logDebug(s.peer, "dtls: updating hash with [%X]", data)
 	}
 	s.hash.Write(data)
 }
 
 func (s *session) reset() {
 	if DebugHandshakeHash {
-		logDebug(s.peer.String(), "dtls: reset session state")
+		logDebug(s.peer, "dtls: reset session state")
 	}
 	s.decrypt = false
 	s.encrypt = false
@@ -102,7 +100,7 @@ func (s *session) reset() {
 
 func (s *session) resetHash() {
 	if DebugHandshakeHash {
-		logDebug(s.peer.String(), "dtls: reset hash")
+		logDebug(s.peer, "dtls: reset hash")
 	}
 	s.hash.Reset()
 }
@@ -110,7 +108,7 @@ func (s *session) resetHash() {
 func (s *session) getHash() []byte {
 	sum := s.hash.Sum(nil)
 	if DebugHandshakeHash {
-		logDebug(s.peer.String(), "dtls: generating hash [%X]", sum)
+		logDebug(s.peer, "dtls: generating hash [%X]", sum)
 	}
 	return sum
 }
@@ -131,17 +129,25 @@ func (s *session) getNextSequence() uint64 {
 	return seq
 }
 
-func (s *session) initKeyBlock() error {
-	var err error
+func (s *session) initKeyBlock() {
 
-	s.KeyBlock, err = newKeyBlock([]byte(s.Client.Identity), s.Psk, s.Client.Random, s.Server.Random)
+	//generate pre-master secret
+	preMasterSecret := generatePskPreMasterSecret(s.Psk)
+
+	//generate master secret
+	masterSecret := generatePrf(preMasterSecret, s.client.Random, s.server.Random, "master secret", 48)
+
+	//generate key block
+	rawKeyBlock := generatePrf(masterSecret, s.server.Random, s.client.Random, "key expansion", s.cipher.GetPrfSize())
+
+	s.keyBlock = s.cipher.GenerateKeyBlock(masterSecret, rawKeyBlock)
 
 	if DebugEncryption {
-		logDebug(s.peer.String(), "dtls: identity[%s] psk[%X] clientRandom[%X] serverRandom[%X]", s.Client.Identity, s.Psk, s.Client.Random, s.Server.Random)
-		logDebug(s.peer.String(), "dtls: %s", s.KeyBlock.Print())
+		logDebug(s.peer, "dtls: identity[%s] psk[%X] clientRandom[%X] serverRandom[%X]", s.Identity, s.Psk, s.client.Random, s.server.Random)
+		logDebug(s.peer, "dtls: %s", s.keyBlock.Print())
 	}
 
-	return err
+	return
 }
 
 func (s *session) isHandshakeDone() bool {
