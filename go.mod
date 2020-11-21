@@ -1,4 +1,4 @@
-module github.com/tartabit/dtls/v2
+module github.com/qwerty-iot/dtls/v2
 
 go 1.15
 
