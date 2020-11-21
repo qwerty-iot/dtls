@@ -2,14 +2,10 @@ package dtls
 
 import (
 	"bytes"
-	"crypto/aes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
-	"errors"
 	"fmt"
-
-	"github.com/bocajim/dtls/ccm"
 )
 
 const (
@@ -42,6 +38,8 @@ func newAad(epoch uint16, seq uint64, msgType uint8, dataLen uint16) []byte {
 
 type keyBlock struct {
 	MasterSecret   []byte
+	ClientMac      []byte
+	ServerMac      []byte
 	ClientWriteKey []byte
 	ServerWriteKey []byte
 	ClientIV       []byte
@@ -50,22 +48,6 @@ type keyBlock struct {
 
 func (kb *keyBlock) Print() string {
 	return fmt.Sprintf("ClientWriteKey[%X], ServerWriteKey[%X], ClientIV[%X], ServerIV[%X]", kb.ClientWriteKey, kb.ServerWriteKey, kb.ClientIV, kb.ServerIV)
-}
-
-func newKeyBlock(identity []byte, psk, clientRandom, serverRandom []byte) (*keyBlock, error) {
-
-	//generate pre-master secret
-	preMasterSecret := generatePskPreMasterSecret(psk)
-
-	//generate master secret
-	masterSecret := generatePrf(preMasterSecret, clientRandom, serverRandom, "master secret", 48)
-
-	//generate key block
-	rawKeyBlock := generatePrf(masterSecret, serverRandom, clientRandom, "key expansion", 48)
-
-	keyBlock := &keyBlock{MasterSecret: masterSecret, ClientWriteKey: rawKeyBlock[0:16], ServerWriteKey: rawKeyBlock[16:32], ClientIV: rawKeyBlock[32:36], ServerIV: rawKeyBlock[36:40]}
-
-	return keyBlock, nil
 }
 
 //dtls_psk_pre_master_secret(unsigned char *key, size_t keylen,unsigned char *result, size_t result_len)
@@ -123,67 +105,4 @@ func generatePrf(key, random1, random2 []byte, label string, keyLen int) []byte 
 	buf = append(buf, tmp...)
 
 	return buf[:keyLen]
-}
-
-func dataEncrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string) ([]byte, error) {
-
-	cipher, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	ccmCipher, err := ccm.NewCCM(cipher, 8, 12)
-	if err != nil {
-		return nil, err
-	}
-
-	if DebugEncryption && len(peer) > 0 {
-		logDebug(peer, "dtls: encrypt nonce[%X] key[%X] aad[%X]", nonce, key, aad)
-		logDebug(peer, "dtls: encrypt clearText[%X][%d]", data, len(data))
-	}
-
-	cipherTextLen := (len(data) / 16) * 16
-	if len(data)%16 != 0 {
-		cipherTextLen += 16
-	}
-	cipherText := make([]byte, 0, cipherTextLen)
-
-	if len(nonce) != 12 {
-		return nil, errors.New("dtls: invalid nonce length")
-	}
-	cipherText = ccmCipher.Seal(cipherText, nonce, data, aad)
-	if DebugEncryption && len(peer) > 0 {
-		logDebug(peer, "dtls: encrypt cipherText[%X][%d]", cipherText, len(cipherText))
-	}
-	return cipherText, nil
-}
-
-func dataDecrypt(data []byte, nonce []byte, key []byte, aad []byte, peer string) ([]byte, error) {
-
-	cipher, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	ccmCipher, err := ccm.NewCCM(cipher, 8, 12)
-	if err != nil {
-		return nil, err
-	}
-
-	if DebugEncryption && len(peer) > 0 {
-		logDebug(peer, "dtls: decrypt nonce[%X] key[%X] aad[%X]", nonce, key, aad)
-		logDebug(peer, "dtls: decrypt cipherText[%X][%d]", data, len(data))
-	}
-
-	clearText := make([]byte, 0, len(data))
-
-	clearText, err = ccmCipher.Open(clearText, nonce, data, aad)
-	if err != nil {
-		if DebugEncryption && len(peer) > 0 {
-			logWarn(peer, "dtls: decrypt failed: %s", err.Error())
-		}
-		return nil, err
-	}
-	if DebugEncryption && len(peer) > 0 {
-		logDebug(peer, "dtls: decrypt clearText[%X][%d]", clearText, len(clearText))
-	}
-	return clearText, nil
 }

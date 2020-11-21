@@ -7,11 +7,16 @@ import (
 )
 
 type Peer struct {
-	peer     TransportPeer
-	session  *session
-	activity time.Time
-	queue    chan []byte
-	mux      sync.Mutex
+	transport TransportEndpoint
+	session   *session
+	activity  time.Time
+	queue     chan []byte
+	mux       sync.Mutex
+	name      string
+}
+
+func (p *Peer) SetName(name string) {
+	p.name = name
 }
 
 func (p *Peer) UseQueue(en bool) {
@@ -27,11 +32,14 @@ func (p *Peer) UseQueue(en bool) {
 }
 
 func (p *Peer) RemoteAddr() string {
-	return p.peer.String()
+	if p == nil {
+		return ""
+	}
+	return p.transport.String()
 }
 
 func (p *Peer) SessionIdentity() string {
-	return p.session.Client.Identity
+	return p.session.Identity
 }
 
 func (p *Peer) LastActivity() time.Time {
@@ -52,7 +60,7 @@ func (p *Peer) Write(data []byte) error {
 
 func (p *Peer) Read(timeout time.Duration) ([]byte, error) {
 	if p.queue == nil {
-		return nil, errors.New("dtls: peer not in queue mode")
+		return nil, errors.New("dtls: transport not in queue mode")
 	}
 	select {
 	case b := <-p.queue:

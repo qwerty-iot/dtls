@@ -2,117 +2,177 @@ package dtls
 
 import (
 	"encoding/hex"
+	"fmt"
 	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
-func Test(t *testing.T) { TestingT(t) }
+func TestDtlsSuite(t *testing.T) {
+	suite.Run(t, new(DtlsSuite))
+}
 
-var _ = Suite(&DtlsSuite{})
+type DtlsSuite struct {
+	suite.Suite
+	server *Listener
+	client *Listener
+}
 
-var server *Listener
-var client *Listener
+func (s *DtlsSuite) Log(msg string, args ...interface{}) {
+	fmt.Printf(msg+"\n", args...)
+}
 
-type DtlsSuite struct{}
-
-func (s *DtlsSuite) SetUpSuite(c *C) {
+func (s *DtlsSuite) SetupSuite() {
 	var err error
-
 	SetLogLevel("info")
 	//DebugAll()
 
-	server, err = NewUdpListener(":5684", time.Second*5)
-	server.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
-	server.AddCompressionMethod(CompressionMethod_Null)
-	c.Assert(server, NotNil)
-	c.Assert(err, IsNil)
+	s.server, err = NewUdpListener(":5684", time.Second*5)
+	s.server.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
+	s.server.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256)
+	s.server.AddCompressionMethod(CompressionMethod_Null)
+	assert.NotNil(s.T(), s.server)
+	assert.Nil(s.T(), err)
 
-	client, err = NewUdpListener(":0", time.Second*5)
-	c.Assert(client, NotNil)
-	c.Assert(err, IsNil)
+	s.client, err = NewUdpListener(":0", time.Second*5)
+	s.client.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
+	s.client.AddCompressionMethod(CompressionMethod_Null)
+	assert.NotNil(s.T(), s.client)
+	assert.Nil(s.T(), err)
 
 	mks := NewKeystoreInMemory()
-	SetKeyStores([]Keystore{mks})
 	psk, _ := hex.DecodeString("00112233445566")
 	mks.AddKey("myIdentity", psk)
 	psk, _ = hex.DecodeString("7CCDE14A5CF3B71C0C08C8B7F9E5")
 	mks.AddKey("oFIrQFrW8EWcZ5u7eGfrkw", psk)
+	SetKeyStores([]Keystore{mks})
 }
 
-/*func (s *DtlsSuite) TestConnect(c *C) {
+/*func (s *DtlsSuite) TestConnect () {
 
-	peer, err := client.AddPeer("127.0.0.1:5684", "oFIrQFrW8EWcZ5u7eGfrkw")
-	c.Assert(err, IsNil)
-	c.Log("finished connecting")
+	transport, err := s.client.AddPeer("127.0.0.1:5684", "oFIrQFrW8EWcZ5u7eGfrkw")
+	assert.Nil(s.T(), err)
+	s.Log("finished connecting")
 
 	coapMsg, _ := hex.DecodeString("400222E1B2726411283A65703D636C69656E7431056C743D333003623D55FF3C2F312F303E2C3C2F322F303E2C3C2F322F313E2C3C2F322F323E2C3C2F322F333E")
-	err = peer.Write(coapMsg)
-	c.Assert(err, IsNil)
-	data, err := peer.Read(time.Second * 5)
-	c.Assert(data, NotNil)
-	c.Assert(err, IsNil)
+	err = transport.Write(coapMsg)
+	assert.Nil(s.T(), err)
+	data, err := transport.Read(time.Second * 5)
+	assert.NotNil(s.T(),data)
+	assert.Nil(s.T(), err)
 
 }*/
 
-func (s *DtlsSuite) TestSimple(c *C) {
+func (s *DtlsSuite) TestSimple() {
 
 	go func() {
 		cnt := 2
 		for {
-			c.Log("receiving packet")
-			data, replyTo := server.Read()
+			s.Log("receiving packet")
+			data, replyTo := s.server.Read()
 
-			c.Log("received packet")
+			s.Log("received packet")
 
-			c.Assert(data, NotNil)
-			c.Assert(replyTo, NotNil)
+			assert.NotNil(s.T(), data)
+			assert.NotNil(s.T(), replyTo)
 
-			replyTo.Write(data)
+			_ = replyTo.Write(data)
 			cnt -= 1
 			if cnt == 0 {
 				break
 			}
 		}
-		c.Log("ending reader")
+		s.Log("ending reader")
 	}()
 
-	peer, err := client.AddPeer("127.0.0.1:5684", "myIdentity")
-	c.Assert(peer, NotNil)
-	c.Assert(err, IsNil)
-	c.Log("connected")
+	peer, err := s.client.AddPeer("127.0.0.1:5684", "myIdentity")
+	assert.NotNil(s.T(), peer)
+	assert.Nil(s.T(), err)
+	s.Log("connected")
 
 	seedData := randomBytes(20)
 
-	peer.Write(seedData)
+	_ = peer.Write(seedData)
 
 	data, err := peer.Read(time.Second * 5)
-	c.Assert(err, IsNil)
-	c.Assert(hex.EncodeToString(data), Equals, hex.EncodeToString(seedData))
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), hex.EncodeToString(seedData), hex.EncodeToString(data))
 
 	seedData = randomBytes(20)
 
-	peer.Write(seedData)
+	_ = peer.Write(seedData)
 
 	data, err = peer.Read(time.Second * 5)
-	c.Assert(err, IsNil)
-	c.Assert(hex.EncodeToString(data), Equals, hex.EncodeToString(seedData))
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), hex.EncodeToString(seedData), hex.EncodeToString(data))
 
 }
 
-func (s *DtlsSuite) TestReconnects(c *C) {
+func (s *DtlsSuite) TestCbcCipher() {
 
 	go func() {
 		cnt := 2
 		for {
-			c.Log("receiving packet")
-			data, replyTo := server.Read()
+			s.Log("receiving packet")
+			data, replyTo := s.server.Read()
 
-			c.Log("received packet")
+			s.Log("received packet")
 
-			c.Assert(data, NotNil)
-			c.Assert(replyTo, NotNil)
+			assert.NotNil(s.T(), data)
+			assert.NotNil(s.T(), replyTo)
+
+			_ = replyTo.Write(data)
+			cnt -= 1
+			if cnt == 0 {
+				break
+			}
+		}
+		s.Log("ending reader")
+	}()
+
+	client2, err := NewUdpListener(":0", time.Second*5)
+	assert.NotNil(s.T(), client2)
+	assert.Nil(s.T(), err)
+
+	client2.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256)
+	client2.AddCompressionMethod(CompressionMethod_Null)
+
+	peer, err := client2.AddPeer("127.0.0.1:5684", "myIdentity")
+	assert.NotNil(s.T(), peer)
+	assert.Nil(s.T(), err)
+	s.Log("connected")
+
+	seedData := randomBytes(20)
+
+	_ = peer.Write(seedData)
+
+	data, err := peer.Read(time.Second * 5)
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), hex.EncodeToString(seedData), hex.EncodeToString(data))
+
+	seedData = randomBytes(20)
+
+	_ = peer.Write(seedData)
+
+	data, err = peer.Read(time.Second * 5)
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), hex.EncodeToString(seedData), hex.EncodeToString(data))
+
+}
+
+func (s *DtlsSuite) TestReconnects() {
+	go func() {
+		cnt := 2
+		for {
+			s.Log("server receiving packet")
+			data, replyTo := s.server.Read()
+
+			s.Log("received packet")
+
+			assert.NotNil(s.T(), data)
+			assert.NotNil(s.T(), replyTo)
 
 			replyTo.Write(data)
 			cnt -= 1
@@ -120,159 +180,173 @@ func (s *DtlsSuite) TestReconnects(c *C) {
 				break
 			}
 		}
-		c.Log("ending reader")
+		s.Log("ending reader")
 	}()
 
 	client2, err := NewUdpListener(":6000", time.Second*5)
-	c.Assert(client, NotNil)
-	c.Assert(err, IsNil)
+	assert.NotNil(s.T(), client2)
+	assert.Nil(s.T(), err)
 
-	peer, err := client2.AddPeer("127.0.0.1:5684", "myIdentity")
-	c.Assert(peer, NotNil)
-	c.Assert(err, IsNil)
-	c.Log("connected")
+	client2.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
+	client2.AddCompressionMethod(CompressionMethod_Null)
+
+	transport, err := client2.AddPeer("127.0.0.1:5684", "myIdentity")
+	assert.NotNil(s.T(), transport)
+	assert.Nil(s.T(), err)
+	s.Log("client2 connected")
 
 	seedData := randomBytes(20)
 
-	peer.Write(seedData)
+	_ = transport.Write(seedData)
 
-	data, err := peer.Read(time.Second * 5)
-	c.Assert(err, IsNil)
-	c.Assert(hex.EncodeToString(data), Equals, hex.EncodeToString(seedData))
+	data, err := transport.Read(time.Second * 5)
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), hex.EncodeToString(seedData), hex.EncodeToString(data))
 
 	err = client2.Shutdown()
-	c.Assert(err, IsNil)
+	assert.Nil(s.T(), err)
+	s.Log("client2 shutdown")
 
 	client3, err := NewUdpListener(":6000", time.Second*5)
-	c.Assert(client, NotNil)
-	c.Assert(err, IsNil)
+	assert.NotNil(s.T(), client3)
+	assert.Nil(s.T(), err)
 
-	peer, err = client3.AddPeer("127.0.0.1:5684", "myIdentity")
-	c.Assert(peer, NotNil)
-	c.Assert(err, IsNil)
-	c.Log("connected")
+	client3.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
+	client3.AddCompressionMethod(CompressionMethod_Null)
+
+	transport, err = client3.AddPeer("127.0.0.1:5684", "myIdentity")
+	assert.NotNil(s.T(), transport)
+	assert.Nil(s.T(), err)
+	s.Log("client3 connected")
 
 	seedData = randomBytes(20)
 
-	peer.Write(seedData)
+	_ = transport.Write(seedData)
 
-	data, err = peer.Read(time.Second * 5)
-	c.Assert(err, IsNil)
-	c.Assert(hex.EncodeToString(data), Equals, hex.EncodeToString(seedData))
+	data, err = transport.Read(time.Second * 5)
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), hex.EncodeToString(seedData), hex.EncodeToString(data))
 
-	client3.Shutdown()
-	c.Assert(err, IsNil)
+	_ = client3.Shutdown()
+	assert.Nil(s.T(), err)
 }
 
-func (s *DtlsSuite) TestResume(c *C) {
+func (s *DtlsSuite) TestResume() {
 
 	go func() {
 		cnt := 2
 		for {
-			c.Log("receiving packet")
-			data, replyTo := server.Read()
+			s.Log("receiving packet")
+			data, replyTo := s.server.Read()
 
-			c.Log("received packet")
+			s.Log("received packet")
 
-			c.Assert(data, NotNil)
-			c.Assert(replyTo, NotNil)
+			assert.NotNil(s.T(), data)
+			assert.NotNil(s.T(), replyTo)
 
-			replyTo.Write(data)
+			_ = replyTo.Write(data)
 			cnt -= 1
 			if cnt == 0 {
 				break
 			}
 		}
-		c.Log("ending reader")
+		s.Log("ending reader")
 	}()
 
-	client2, err := NewUdpListener(":6000", time.Second*5)
-	c.Assert(client, NotNil)
-	c.Assert(err, IsNil)
+	client2, err := NewUdpListener(":6001", time.Second*5)
+	assert.NotNil(s.T(), client2)
+	assert.Nil(s.T(), err)
 
-	peer, err := client2.AddPeer("127.0.0.1:5684", "myIdentity")
-	c.Assert(peer, NotNil)
-	c.Assert(err, IsNil)
-	c.Log("connected")
+	client2.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
+	client2.AddCompressionMethod(CompressionMethod_Null)
+
+	transport, err := client2.AddPeer("127.0.0.1:5684", "myIdentity")
+	assert.NotNil(s.T(), transport)
+	assert.Nil(s.T(), err)
+	s.Log("connected")
 
 	//save sessionId
-	sessionId := peer.session.Id
+	sessionId := transport.session.Id
 
 	seedData := randomBytes(20)
 
-	peer.Write(seedData)
+	transport.Write(seedData)
 
-	data, err := peer.Read(time.Second * 5)
-	c.Assert(err, IsNil)
-	c.Assert(hex.EncodeToString(data), Equals, hex.EncodeToString(seedData))
+	data, err := transport.Read(time.Second * 5)
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), hex.EncodeToString(seedData), hex.EncodeToString(data))
 
 	err = client2.Shutdown()
-	c.Assert(err, IsNil)
+	assert.Nil(s.T(), err)
 
-	client3, err := NewUdpListener(":6000", time.Second*5)
-	c.Assert(client3, NotNil)
-	c.Assert(err, IsNil)
+	client3, err := NewUdpListener(":6001", time.Second*5)
+	assert.NotNil(s.T(), client3)
+	assert.Nil(s.T(), err)
 
-	peer, err = client3.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: "myIdentity", SessionId: sessionId, HandshakeTimeout: time.Second * 20})
-	c.Assert(peer, NotNil)
-	c.Assert(err, IsNil)
-	c.Log("connected")
-	c.Assert(hex.EncodeToString(sessionId), Equals, hex.EncodeToString(peer.session.Id))
+	client3.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
+	client3.AddCompressionMethod(CompressionMethod_Null)
+
+	transport, err = client3.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: "myIdentity", SessionId: sessionId, HandshakeTimeout: time.Second * 20})
+	assert.NotNil(s.T(), transport)
+	assert.Nil(s.T(), err)
+
+	s.Log("connected")
+	assert.Equal(s.T(), hex.EncodeToString(transport.session.Id), hex.EncodeToString(sessionId))
 
 	seedData = randomBytes(20)
 
-	peer.Write(seedData)
+	_ = transport.Write(seedData)
 
-	data, err = peer.Read(time.Second * 5)
-	c.Assert(err, IsNil)
-	c.Assert(hex.EncodeToString(data), Equals, hex.EncodeToString(seedData))
+	data, err = transport.Read(time.Second * 5)
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), hex.EncodeToString(seedData), hex.EncodeToString(data))
 
-	client3.Shutdown()
-	c.Assert(err, IsNil)
+	_ = client3.Shutdown()
+	assert.Nil(s.T(), err)
 
 }
 
-func (s *DtlsSuite) TestFailedClient(c *C) {
+func (s *DtlsSuite) TestFailedClient() {
 
-	peer, err := client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5687", Identity: "myIdentity", HandshakeTimeout: time.Second * 5})
-	c.Assert(peer, IsNil)
-	c.Assert(err.Error(), Equals, "dtls: timed out waiting for handshake to complete")
+	transport, err := s.client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5687", Identity: "myIdentity", HandshakeTimeout: time.Second * 5})
+	assert.Nil(s.T(), transport)
+	assert.EqualError(s.T(), err, "dtls: timed out waiting for handshake to complete")
 
-	peer, err = client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: "xxx", HandshakeTimeout: time.Second * 5})
-	c.Assert(peer, IsNil)
-	c.Assert(err.Error(), Equals, "dtls: no psk could be found")
+	transport, err = s.client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: "xxx", HandshakeTimeout: time.Second * 5})
+	assert.Nil(s.T(), transport)
+	assert.EqualError(s.T(), err, "dtls: no psk could be found")
 }
 
 /*
-func (s *DtlsSuite) TestLoopback(c *C) {
+func (s *DtlsSuite) TestLoopback () {
 
-	peer, err := listener.AddPeer(listener.transport.Local, "oFIrQFrW8EWcZ5u7eGfrkw")
-	c.Assert(err, IsNil)
-	c.Log("finished connecting")
+	transport, err := listener.AddPeer(listener.transport.Local, "oFIrQFrW8EWcZ5u7eGfrkw")
+	assert.Nil(s.T(), err)
+	s.Log("finished connecting")
 
 	coapMsg, _ := hex.DecodeString("400222E1B2726411283A65703D636C69656E7431056C743D333003623D55FF3C2F312F303E2C3C2F322F303E2C3C2F322F313E2C3C2F322F323E2C3C2F322F333E")
-	err = peer.Write(coapMsg)
-	c.Assert(err, IsNil)
+	err = transport.Write(coapMsg)
+	assert.Nil(s.T(), err)
 	data, rsp := listener.Read()
-	c.Assert(data, NotNil)
+	assert.NotNil(s.T(),data)
 	c.Assert(rsp, NotNil)(
 
 }*/
 
 /*
-func (s *DtlsSuite) TestLeshan(c *C) {
+func (s *DtlsSuite) TestLeshan () {
 
 	leshan, err := NewUdpListener(":0", time.Second*5)
 	c.Assert(leshan, NotNil)
-	c.Assert(err, IsNil)
+	assert.Nil(s.T(), err)
 
-	peer, err := client.AddPeer("leshan.eclipse.org:5684", "oFIrQFrW8EWcZ5u7eGfrkw")
-	c.Assert(peer, NotNil)
-	c.Assert(err, IsNil)
-	c.Log("connected")
+	transport, err := s.client.AddPeer("leshan.eclipse.org:5684", "oFIrQFrW8EWcZ5u7eGfrkw")
+	assert.NotNil(s.T(), transport)
+	assert.Nil(s.T(), err)
+	s.Log("connected")
 
 	client, err := DtlsNewUdpClient("leshan.eclipse.org:5684")
-	c.Assert(err, IsNil)
+	assert.Nil(s.T(), err)
 
 	coapMsg, _ := hex.DecodeString("400222E1B2726411283A65703D636C69656E7431056C743D333003623D55FF3C2F312F303E2C3C2F322F303E2C3C2F322F313E2C3C2F322F323E2C3C2F322F333E")
 	client.Write(coapMsg)

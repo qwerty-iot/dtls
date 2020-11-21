@@ -4,10 +4,10 @@ dtls
 [![Build Status](https://travis-ci.org/bocajim/dtls.svg?branch=master)](https://travis-ci.org/bocajim/dtls)
 [![Coverage](http://gocover.io/_badge/github.com/bocajim/dtls)](http://gocover.io/github.com/bocajim/dtls)
 [![GoDoc](https://godoc.org/github.com/bocajim/dtls?status.png)](http://godoc.org/github.com/bocajim/dtls)
-[![License](https://img.shields.io/npm/l/express.svg)](http://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/github/license/tartabit/dtls)](https://opensource.org/licenses/MPL-2.0)
 [![ReportCard](http://goreportcard.com/badge/github.com/bocajim/dtls)](http://goreportcard.com/report/bocajim/dtls)
 
-https://github.com/bocajim/dtls
+https://github.com/tartabit/dtls
 
 This package implements a [RFC-4347](https://tools.ietf.org/html/rfc4347) compliant DTLS client and server.  NOTE: This library is under active development and is not yet stable enough to be used in production.
 
@@ -58,5 +58,7 @@ http://godoc.org/github.com/bocajim/dtls
 License
 -------
 
-MIT
+Mozilla Public License Version 2.0
+
+NOTE: License was changed from MIT on 11/20/2020.
 

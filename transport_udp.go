@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type udpPeer struct {
+type udpEndpoint struct {
 	addr   *net.UDPAddr
 	handle *udpTransport
 }
@@ -46,7 +46,7 @@ func (u *udpTransport) Shutdown() error {
 	return u.socket.Close()
 }
 
-func (u *udpTransport) ReadPacket() ([]byte, TransportPeer, error) {
+func (u *udpTransport) ReadPacket() ([]byte, TransportEndpoint, error) {
 	buffer := make([]byte, 32768)
 
 	//TODO add timeout support
@@ -54,29 +54,29 @@ func (u *udpTransport) ReadPacket() ([]byte, TransportPeer, error) {
 	for {
 		length, from, err := u.socket.ReadFromUDP(buffer)
 		if err != nil {
-			logError("", "dtls: failed to receive packet: %s", err.Error())
+			logError(nil, err, "dtls: failed to receive packet")
 			return nil, nil, err
 		}
-		return buffer[:length], &udpPeer{addr: from, handle: u}, nil
+		return buffer[:length], &udpEndpoint{addr: from, handle: u}, nil
 	}
 }
 
-func (p *udpPeer) WritePacket(data []byte) error {
+func (p *udpEndpoint) WritePacket(data []byte) error {
 	_, err := p.handle.socket.WriteToUDP(data, p.addr)
 	return err
 }
 
-func (p *udpPeer) String() string {
+func (p *udpEndpoint) String() string {
 	return p.addr.String()
 }
 
-func (p *udpTransport) NewPeer(addr string) TransportPeer {
-	peer := &udpPeer{}
+func (p *udpTransport) NewEndpoint(addr string) TransportEndpoint {
+	peer := &udpEndpoint{}
 	peer.addr, _ = net.ResolveUDPAddr("udp", addr)
 	peer.handle = p
 	return peer
 }
 
-func NewUdpPeerFromSocket(socket *net.UDPConn, addr *net.UDPAddr) TransportPeer {
-	return &udpPeer{addr: addr, handle: &udpTransport{socket: socket}}
+func NewUdpPeerFromSocket(socket *net.UDPConn, addr *net.UDPAddr) TransportEndpoint {
+	return &udpEndpoint{addr: addr, handle: &udpTransport{socket: socket}}
 }

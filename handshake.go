@@ -17,12 +17,6 @@ const (
 	handshakeType_Finished           handshakeType = 20
 )
 
-type CipherSuite uint16
-
-const (
-	CipherSuite_TLS_PSK_WITH_AES_128_CCM_8 CipherSuite = 0xC0A8
-)
-
 type CompressionMethod uint8
 
 const (
@@ -128,12 +122,4 @@ func typeToString(t handshakeType) string {
 		return "Finished(20)"
 	}
 	return fmt.Sprintf("Unknown(%d)", int(t))
-}
-
-func cipherSuiteToString(c CipherSuite) string {
-	switch c {
-	case CipherSuite_TLS_PSK_WITH_AES_128_CCM_8:
-		return "TLS_PSK_WITH_AES_128_CCM_8(0xC0A8)"
-	}
-	return fmt.Sprintf("Unknown(0x%X)", c)
 }

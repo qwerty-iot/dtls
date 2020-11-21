@@ -2,9 +2,10 @@
 // as per RFC 3610.
 //
 // See https://tools.ietf.org/html/rfc3610
-package ccm
+package dtls
 
 import (
+	"crypto/aes"
 	"crypto/cipher"
 	"crypto/subtle"
 	"encoding/binary"
@@ -12,6 +13,91 @@ import (
 	"fmt"
 	"math"
 )
+
+type CipherCcm struct {
+	peer *Peer
+}
+
+func (c CipherCcm) GetPrfSize() int {
+	return 48
+}
+
+func (c CipherCcm) GenerateKeyBlock(masterSecret []byte, rawKeyBlock []byte) *keyBlock {
+	return &keyBlock{MasterSecret: masterSecret, ClientWriteKey: rawKeyBlock[0:16], ServerWriteKey: rawKeyBlock[16:32], ClientIV: rawKeyBlock[32:36], ServerIV: rawKeyBlock[36:40]}
+}
+
+func (c CipherCcm) Encrypt(rec *record, key []byte, iv []byte, mac []byte) ([]byte, error) {
+	nonce := newNonce(iv, rec.Epoch, rec.Sequence)
+	aad := newAad(rec.Epoch, rec.Sequence, uint8(rec.ContentType), uint16(len(rec.Data)))
+
+	cipher, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	ccmCipher, err := NewCCM(cipher, 8, 12)
+	if err != nil {
+		return nil, err
+	}
+
+	if DebugEncryption && c.peer != nil {
+		logDebug(c.peer, "dtls: encrypt nonce[%X] key[%X] aad[%X]", nonce, key, aad)
+		logDebug(c.peer, "dtls: encrypt clearText[%X][%d]", rec.Data, len(rec.Data))
+	}
+
+	cipherTextLen := (len(rec.Data) / 16) * 16
+	if len(rec.Data)%16 != 0 {
+		cipherTextLen += 16
+	}
+	cipherText := make([]byte, 0, cipherTextLen)
+
+	if len(nonce) != 12 {
+		return nil, errors.New("dtls: invalid nonce length")
+	}
+	cipherText = ccmCipher.Seal(cipherText, nonce, rec.Data, aad)
+	w := newByteWriter()
+	w.PutUint16(rec.Epoch)
+	w.PutUint48(rec.Sequence)
+	w.PutBytes(cipherText)
+	cipherText = w.Bytes()
+	if DebugEncryption && c.peer != nil {
+		logDebug(c.peer, "dtls: encrypt cipherText[%X][%d]", cipherText, len(cipherText))
+	}
+	return cipherText, nil
+}
+
+func (c CipherCcm) Decrypt(rec *record, key []byte, iv []byte, mac []byte) ([]byte, error) {
+	nonce := newNonceFromBytes(iv, rec.Data[:8])
+	aad := newAad(rec.Epoch, rec.Sequence, uint8(rec.ContentType), uint16(len(rec.Data)-16))
+	data := rec.Data[8:]
+
+	cipher, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	ccmCipher, err := NewCCM(cipher, 8, 12)
+	if err != nil {
+		return nil, err
+	}
+
+	if DebugEncryption && c.peer != nil {
+		logDebug(c.peer, "dtls: decrypt nonce[%X] key[%X] aad[%X]", nonce, key, aad)
+		logDebug(c.peer, "dtls: decrypt cipherText[%X][%d]", data, len(data))
+	}
+
+	clearText := make([]byte, 0, len(data))
+
+	clearText, err = ccmCipher.Open(clearText, nonce, data, aad)
+	if err != nil {
+		if DebugEncryption && c.peer != nil {
+			logWarn(c.peer, err, "dtls: decrypt failed")
+		}
+		return nil, err
+	}
+	if DebugEncryption && c.peer != nil {
+		logDebug(c.peer, "dtls: decrypt clearText[%X][%d]", clearText, len(clearText))
+	}
+	return clearText, nil
+}
 
 // ccm represents a Counter with CBC-MAC with a specific key.
 type ccm struct {
@@ -66,19 +152,6 @@ func maxlen(L uint8, tagsize int) int {
 		return math.MaxInt32 - tagsize // We have only 32bit int's
 	}
 	return int(max)
-}
-
-// MaxNonceLength returns the maximum nonce length for a given plaintext length.
-// A return value <= 0 indicates that plaintext length is too large for
-// any nonce length.
-func MaxNonceLength(pdatalen int) int {
-	const tagsize = 16
-	for L := 2; L <= 8; L++ {
-		if maxlen(uint8(L), tagsize) >= pdatalen {
-			return 15 - L
-		}
-	}
-	return 0
 }
 
 func (c *ccm) cbcRound(mac, data []byte) {

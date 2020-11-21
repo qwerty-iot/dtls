@@ -4,11 +4,11 @@ type Transport interface {
 	Type() string
 	Local() string
 	Shutdown() error
-	NewPeer(address string) TransportPeer
-	ReadPacket() ([]byte, TransportPeer, error)
+	NewEndpoint(address string) TransportEndpoint
+	ReadPacket() ([]byte, TransportEndpoint, error)
 }
 
-type TransportPeer interface {
+type TransportEndpoint interface {
 	String() string
 	WritePacket(data []byte) error
 }
