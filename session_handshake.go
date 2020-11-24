@@ -266,7 +266,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			s.cipher = getCipher(s.peer, s.selectedCipherSuite)
 			s.handshake.state = "recv-serverhello"
 		case handshakeType_ClientKeyExchange:
-			s.Identity = string(rspHs.ClientKeyExchange.GetIdentity())
+			s.Identity = rspHs.ClientKeyExchange.GetIdentity()
 			psk := GetPskFromKeystore(s.Identity, s.peer.RemoteAddr())
 			if psk == nil {
 				err = errors.New("dtls: no valid psk for identity")
@@ -279,7 +279,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 
 			//TODO fail here if identity isn't found
 		case handshakeType_ServerKeyExchange:
-			s.Identity = string(rspHs.ServerKeyExchange.GetIdentity())
+			s.Identity = rspHs.ServerKeyExchange.GetIdentity()
 			s.handshake.state = "recv-serverkeyexchange"
 		case handshakeType_ServerHelloDone:
 			s.handshake.state = "recv-serverhellodone"

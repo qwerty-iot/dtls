@@ -1,9 +1,11 @@
 package dtls
 
 import (
+	"encoding/hex"
 	"errors"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type Peer struct {
@@ -38,8 +40,16 @@ func (p *Peer) RemoteAddr() string {
 	return p.transport.String()
 }
 
-func (p *Peer) SessionIdentity() string {
+func (p *Peer) SessionIdentity() []byte {
 	return p.session.Identity
+}
+
+func (p *Peer) SessionIdentityString() string {
+	if utf8.Valid(p.session.Identity) {
+		return string(p.session.Identity)
+	} else {
+		return hex.EncodeToString(p.session.Identity)
+	}
 }
 
 func (p *Peer) LastActivity() time.Time {

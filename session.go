@@ -25,7 +25,7 @@ type session struct {
 		RandomTime time.Time
 		Random     []byte
 	}
-	Identity       string
+	Identity       []byte
 	Psk            []byte
 	epoch          uint16
 	sequenceNumber uint64
@@ -143,7 +143,7 @@ func (s *session) initKeyBlock() {
 	s.keyBlock = s.cipher.GenerateKeyBlock(masterSecret, rawKeyBlock)
 
 	if DebugEncryption {
-		logDebug(s.peer, "dtls: identity[%s] psk[%X] clientRandom[%X] serverRandom[%X]", s.Identity, s.Psk, s.client.Random, s.server.Random)
+		logDebug(s.peer, "dtls: identity[%s] psk[%X] clientRandom[%X] serverRandom[%X]", string(s.Identity), s.Psk, s.client.Random, s.server.Random)
 		logDebug(s.peer, "dtls: %s", s.keyBlock.Print())
 	}
 

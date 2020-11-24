@@ -44,9 +44,9 @@ func (s *DtlsSuite) SetupSuite() {
 
 	mks := NewKeystoreInMemory()
 	psk, _ := hex.DecodeString("00112233445566")
-	mks.AddKey("myIdentity", psk)
+	mks.AddKey([]byte("myIdentity"), psk)
 	psk, _ = hex.DecodeString("7CCDE14A5CF3B71C0C08C8B7F9E5")
-	mks.AddKey("oFIrQFrW8EWcZ5u7eGfrkw", psk)
+	mks.AddKey([]byte("oFIrQFrW8EWcZ5u7eGfrkw"), psk)
 	SetKeyStores([]Keystore{mks})
 }
 
@@ -87,7 +87,7 @@ func (s *DtlsSuite) TestSimple() {
 		s.Log("ending reader")
 	}()
 
-	peer, err := s.client.AddPeer("127.0.0.1:5684", "myIdentity")
+	peer, err := s.client.AddPeer("127.0.0.1:5684", []byte("myIdentity"))
 	assert.NotNil(s.T(), peer)
 	assert.Nil(s.T(), err)
 	s.Log("connected")
@@ -139,7 +139,7 @@ func (s *DtlsSuite) TestCbcCipher() {
 	client2.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256)
 	client2.AddCompressionMethod(CompressionMethod_Null)
 
-	peer, err := client2.AddPeer("127.0.0.1:5684", "myIdentity")
+	peer, err := client2.AddPeer("127.0.0.1:5684", []byte("myIdentity"))
 	assert.NotNil(s.T(), peer)
 	assert.Nil(s.T(), err)
 	s.Log("connected")
@@ -190,7 +190,7 @@ func (s *DtlsSuite) TestReconnects() {
 	client2.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
 	client2.AddCompressionMethod(CompressionMethod_Null)
 
-	transport, err := client2.AddPeer("127.0.0.1:5684", "myIdentity")
+	transport, err := client2.AddPeer("127.0.0.1:5684", []byte("myIdentity"))
 	assert.NotNil(s.T(), transport)
 	assert.Nil(s.T(), err)
 	s.Log("client2 connected")
@@ -214,7 +214,7 @@ func (s *DtlsSuite) TestReconnects() {
 	client3.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
 	client3.AddCompressionMethod(CompressionMethod_Null)
 
-	transport, err = client3.AddPeer("127.0.0.1:5684", "myIdentity")
+	transport, err = client3.AddPeer("127.0.0.1:5684", []byte("myIdentity"))
 	assert.NotNil(s.T(), transport)
 	assert.Nil(s.T(), err)
 	s.Log("client3 connected")
@@ -260,7 +260,7 @@ func (s *DtlsSuite) TestResume() {
 	client2.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
 	client2.AddCompressionMethod(CompressionMethod_Null)
 
-	transport, err := client2.AddPeer("127.0.0.1:5684", "myIdentity")
+	transport, err := client2.AddPeer("127.0.0.1:5684", []byte("myIdentity"))
 	assert.NotNil(s.T(), transport)
 	assert.Nil(s.T(), err)
 	s.Log("connected")
@@ -286,7 +286,7 @@ func (s *DtlsSuite) TestResume() {
 	client3.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
 	client3.AddCompressionMethod(CompressionMethod_Null)
 
-	transport, err = client3.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: "myIdentity", SessionId: sessionId, HandshakeTimeout: time.Second * 20})
+	transport, err = client3.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: []byte("myIdentity"), SessionId: sessionId, HandshakeTimeout: time.Second * 20})
 	assert.NotNil(s.T(), transport)
 	assert.Nil(s.T(), err)
 
@@ -308,11 +308,11 @@ func (s *DtlsSuite) TestResume() {
 
 func (s *DtlsSuite) TestFailedClient() {
 
-	transport, err := s.client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5687", Identity: "myIdentity", HandshakeTimeout: time.Second * 5})
+	transport, err := s.client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5687", Identity: []byte("myIdentity"), HandshakeTimeout: time.Second * 5})
 	assert.Nil(s.T(), transport)
 	assert.EqualError(s.T(), err, "dtls: timed out waiting for handshake to complete")
 
-	transport, err = s.client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: "xxx", HandshakeTimeout: time.Second * 5})
+	transport, err = s.client.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: []byte("xxx"), HandshakeTimeout: time.Second * 5})
 	assert.Nil(s.T(), transport)
 	assert.EqualError(s.T(), err, "dtls: no psk could be found")
 }

@@ -8,7 +8,7 @@ import (
 type sessionCacheEntry struct {
 	id       []byte
 	len      int
-	identity string
+	identity []byte
 	expires  time.Time
 }
 
@@ -29,8 +29,8 @@ func SessionCacheSize() int {
 	return size
 }
 
-func getIdentityFromCache(sessionId string) string {
-	var identity string
+func getIdentityFromCache(sessionId string) []byte {
+	var identity []byte
 	sessionCacheMux.Lock()
 	sce, found := sessionCache[sessionId]
 	if found {
@@ -40,7 +40,7 @@ func getIdentityFromCache(sessionId string) string {
 	return identity
 }
 
-func setIdentityToCache(sessionId string, identity string) {
+func setIdentityToCache(sessionId string, identity []byte) {
 	now := time.Now()
 	sessionCacheMux.Lock()
 	sessionCache[sessionId] = sessionCacheEntry{identity: identity, expires: now.Add(SessionCacheTtl)}

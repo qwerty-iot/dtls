@@ -25,7 +25,7 @@ type msg struct {
 }
 
 // This callback is invoked each time a handshake completes, if the handshake failed, the reason is stored in error
-var HandshakeCompleteCallback func(*Peer, string, time.Duration, error)
+var HandshakeCompleteCallback func(*Peer, []byte, time.Duration, error)
 
 func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, error) {
 	utrans, err := newUdpTransport(listener, readTimeout)
@@ -176,12 +176,12 @@ func (l *Listener) addServerPeer(tpeer TransportEndpoint) (*Peer, error) {
 
 type PeerParams struct {
 	Addr             string
-	Identity         string
+	Identity         []byte
 	HandshakeTimeout time.Duration
 	SessionId        []byte
 }
 
-func (l *Listener) AddPeer(addr string, identity string) (*Peer, error) {
+func (l *Listener) AddPeer(addr string, identity []byte) (*Peer, error) {
 	return l.AddPeerWithParams(&PeerParams{Addr: addr, Identity: identity, HandshakeTimeout: time.Second * 20})
 }
 

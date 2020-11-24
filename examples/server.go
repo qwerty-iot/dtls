@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/hex"
-	"github.com/tartabit/dtls/v2"
+	"github.com/qwerty-iot/dtls/v2"
 	"time"
 )
 
@@ -18,7 +18,7 @@ func main() {
 
 	mks := dtls.NewKeystoreInMemory()
 	psk, _ := hex.DecodeString("11223344556677889900")
-	mks.AddKey("qwerty-x1gen8", psk)
+	mks.AddKey([]byte("qwerty-x1gen8"), psk)
 	dtls.SetKeyStores([]dtls.Keystore{mks})
 
 	time.Sleep(time.Hour)
