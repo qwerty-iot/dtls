@@ -211,22 +211,21 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				s.generateCookie()
 				s.sequenceNumber = uint64(rspHs.Header.Sequence)
 				s.handshake.seq = rspHs.Header.Sequence
-				s.handshake.state = "recv-clienthello-initial"
 				s.started = time.Now()
+				s.handshake.state = "recv-clienthello-initial"
 			} else {
 				if !reflect.DeepEqual(cookie, s.handshake.cookie) {
 					s.handshake.state = "failed"
 					err = errors.New("dtls: cookie in clienthello does not match")
 					break
 				}
-				s.client.RandomTime, s.client.Random = rspHs.ClientHello.GetRandom()
-				if rspHs.ClientHello.HasSessionId() {
+
+				if false && rspHs.ClientHello.HasSessionId() {
 					//resuming a session
 					s.Identity = getIdentityFromCache(rspHs.ClientHello.GetSessionIdStr())
 					if len(s.Identity) > 0 {
 						s.Id = rspHs.ClientHello.GetSessionId()
 						logDebug(s.peer, "dtls: resuming previously established session, set identity: %s", s.Identity)
-						s.resumed = true
 
 						psk := GetPskFromKeystore(s.Identity, s.peer.RemoteAddr())
 						if psk == nil {
@@ -234,18 +233,27 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 							break
 						}
 						s.Psk = psk
-						s.initKeyBlock()
 
+						s.resumed = true
 					} else {
 						logDebug(s.peer, "dtls: tried to resume session, but it was not found")
 						s.resumed = false
 					}
-				} else {
-					s.resumed = false
 				}
+
+				s.client.RandomTime, s.client.Random = rspHs.ClientHello.GetRandom()
 				s.selectedCipherSuite = rspHs.ClientHello.SelectCipherSuite(s.listener.cipherSuites)
 				s.cipher = getCipher(s.peer, s.selectedCipherSuite)
-				s.handshake.state = "recv-clienthello"
+				if s.cipher == nil {
+					s.handshake.state = "failed"
+					err = errors.New("dtls: no valid cipher available")
+					break
+				}
+				if !s.resumed {
+					s.handshake.state = "recv-clienthello"
+				} else {
+					s.handshake.state = "recv-clienthello-resumed"
+				}
 			}
 		case handshakeType_HelloVerifyRequest:
 			if len(s.handshake.cookie) == 0 {
@@ -268,6 +276,11 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			}
 			s.selectedCipherSuite = rspHs.ServerHello.cipherSuite
 			s.cipher = getCipher(s.peer, s.selectedCipherSuite)
+			if s.cipher == nil {
+				s.handshake.state = "failed"
+				err = errors.New("dtls: no valid cipher available")
+				break
+			}
 			s.handshake.state = "recv-serverhello"
 		case handshakeType_ClientKeyExchange:
 			s.Identity = rspHs.ClientKeyExchange.GetIdentity()
@@ -280,8 +293,6 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			s.initKeyBlock()
 
 			s.handshake.state = "recv-clientkeyexchange"
-
-			//TODO fail here if identity isn't found
 		case handshakeType_ServerKeyExchange:
 			s.Identity = rspHs.ServerKeyExchange.GetIdentity()
 			s.handshake.state = "recv-serverkeyexchange"
@@ -340,6 +351,28 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			if err != nil {
 				break
 			}
+		case "recv-clienthello-resumed":
+
+			reqHs = newHandshake(handshakeType_ServerHello)
+			reqHs.ServerHello.Init(s.server.Random, s.Id, s.selectedCipherSuite)
+			err = s.writeHandshake(reqHs)
+
+			s.initKeyBlock()
+
+			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
+			s.incEpoch()
+			err = s.writeRecord(rec)
+			if err != nil {
+				break
+			}
+			s.encrypt = true
+
+			reqHs2 := newHandshake(handshakeType_Finished)
+			reqHs2.Finished.Init(s.keyBlock.MasterSecret, s.getHash(), "server")
+			err = s.writeHandshake(reqHs2)
+			if err != nil {
+				break
+			}
 		case "recv-helloverifyrequest":
 			reqHs = newHandshake(handshakeType_ClientHello)
 			err = reqHs.ClientHello.Init(s.Id, s.client.Random, s.handshake.cookie, s.listener.cipherSuites, s.listener.compressionMethods)
@@ -389,7 +422,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				break
 			}
 		case "finished":
-			if s.Type == SessionType_Server {
+			if s.Type == SessionType_Server && !s.resumed {
 				rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
 				s.incEpoch()
 				err = s.writeRecord(rec)
