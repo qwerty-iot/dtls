@@ -58,7 +58,7 @@ func (u *udpTransport) ReadPacket() ([]byte, TransportEndpoint, error) {
 	for {
 		length, from, err := u.socket.ReadFromUDP(buffer)
 		if err != nil {
-			logError(nil, err, "dtls: failed to receive packet")
+			logError(nil, nil, err, "failed to receive packet")
 			return nil, nil, err
 		}
 		return buffer[:length], &udpEndpoint{addr: from, handle: u}, nil

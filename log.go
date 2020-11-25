@@ -49,30 +49,34 @@ func defaultLogFunc(ts time.Time, level string, peer *Peer, err error, msg strin
 	}
 }
 
-func logError(peer *Peer, err error, f string, args ...interface{}) {
+func logError(peer *Peer, rec *record, err error, f string, args ...interface{}) {
 	if logLevel < 1 {
 		return
 	}
 	logFunc(time.Now(), LogLevelError, peer, err, fmt.Sprintf(f, args...))
 }
 
-func logWarn(peer *Peer, err error, f string, args ...interface{}) {
+func logWarn(peer *Peer, rec *record, err error, f string, args ...interface{}) {
 	if logLevel < 2 {
 		return
 	}
 	logFunc(time.Now(), LogLevelWarn, peer, err, fmt.Sprintf(f, args...))
 }
 
-func logInfo(peer *Peer, f string, args ...interface{}) {
+func logInfo(peer *Peer, rec *record, f string, args ...interface{}) {
 	if logLevel < 3 {
 		return
 	}
 	logFunc(time.Now(), LogLevelInfo, peer, nil, fmt.Sprintf(f, args...))
 }
 
-func logDebug(peer *Peer, f string, args ...interface{}) {
+func logDebug(peer *Peer, rec *record, f string, args ...interface{}) {
 	if logLevel < 4 {
 		return
 	}
-	logFunc(time.Now(), LogLevelDebug, peer, nil, fmt.Sprintf(f, args...))
+	prefix := "dtls[-][-]: "
+	if rec != nil {
+		prefix = fmt.Sprintf("dtls[%d][%d]: ", rec.Epoch, rec.Sequence)
+	}
+	logFunc(time.Now(), LogLevelDebug, peer, nil, fmt.Sprintf(prefix+f, args...))
 }

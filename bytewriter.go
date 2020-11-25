@@ -29,7 +29,7 @@ func (w *byteWriter) PadTo(l int) {
 }
 
 func (w *byteWriter) PutUint8(value uint8) {
-	binary.Write(w.buf, binary.BigEndian, value)
+	_ = binary.Write(w.buf, binary.BigEndian, value)
 	return
 }
 

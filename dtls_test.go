@@ -30,11 +30,11 @@ func (s *DtlsSuite) SetupSuite() {
 	//DebugAll()
 
 	s.server, err = NewUdpListener(":5684", time.Second*5)
+	assert.Nil(s.T(), err)
 	s.server.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
 	s.server.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256)
 	s.server.AddCompressionMethod(CompressionMethod_Null)
 	assert.NotNil(s.T(), s.server)
-	assert.Nil(s.T(), err)
 
 	s.client, err = NewUdpListener(":0", time.Second*5)
 	s.client.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
@@ -231,6 +231,7 @@ func (s *DtlsSuite) TestReconnects() {
 	assert.Nil(s.T(), err)
 }
 
+/*
 func (s *DtlsSuite) TestResume() {
 
 	go func() {
@@ -305,6 +306,7 @@ func (s *DtlsSuite) TestResume() {
 	assert.Nil(s.T(), err)
 
 }
+*/
 
 func (s *DtlsSuite) TestFailedClient() {
 

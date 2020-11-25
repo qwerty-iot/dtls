@@ -77,8 +77,8 @@ func (c CipherCBC) Encrypt(rec *record, key []byte, iv []byte, mac []byte) ([]by
 	clearText = append(clearText, padding...)
 
 	if DebugEncryption && c.peer != nil {
-		logDebug(c.peer, "dtls: encrypt mac[%X] paddingLen[%d]", MAC, paddingLen)
-		logDebug(c.peer, "dtls: encrypt clearText[%X][%d]", clearText, len(clearText))
+		logDebug(c.peer, rec, "encrypt mac[%X] paddingLen[%d]", MAC, paddingLen)
+		logDebug(c.peer, rec, "encrypt clearText[%X][%d]", clearText, len(clearText))
 	}
 
 	// Generate IV
@@ -94,7 +94,7 @@ func (c CipherCBC) Encrypt(rec *record, key []byte, iv []byte, mac []byte) ([]by
 	cipherText = append(tiv, cipherText...)
 
 	if DebugEncryption && c.peer != nil {
-		logDebug(c.peer, "dtls: encrypt cipherText[%X][%d]", cipherText, len(cipherText))
+		logDebug(c.peer, rec, "encrypt cipherText[%X][%d]", cipherText, len(cipherText))
 	}
 	return cipherText, nil
 }
@@ -113,14 +113,13 @@ func (c CipherCBC) Decrypt(rec *record, key []byte, iv []byte, mac []byte) ([]by
 	cipherText := rec.Data[blockSize:]
 
 	if DebugEncryption && c.peer != nil {
-		logDebug(c.peer, "dtls: decrypt iv[%X] blockSize[%d] macSize[%d]", tiv, blockSize, macCalc.Size())
-		logDebug(c.peer, "dtls: decrypt cipherText[%X][%d]", cipherText, len(cipherText))
+		logDebug(c.peer, rec, "decrypt iv[%X] blockSize[%d] macSize[%d]", tiv, blockSize, macCalc.Size())
+		logDebug(c.peer, rec, "decrypt cipherText[%X][%d]", cipherText, len(cipherText))
 	}
 
 	cbc.SetIV(tiv)
 	clearText := make([]byte, len(cipherText))
 	cbc.CryptBlocks(clearText, cipherText)
-	logDebug(c.peer, "dtls: decrypt clearText[%X][%d]", clearText, len(clearText))
 
 	// Padding+MAC needs to be checked in constant time
 	// Otherwise we reveal information about the level of correctness
@@ -133,8 +132,6 @@ func (c CipherCBC) Decrypt(rec *record, key []byte, iv []byte, mac []byte) ([]by
 
 	dataEnd := len(clearText) - macSize - paddingLen
 
-	logDebug(c.peer, "dtls: decrypt dataEnd[%d] macSize[%d] paddingLen[%d]", dataEnd, macSize, paddingLen)
-
 	expectedMAC := clearText[dataEnd : dataEnd+macSize]
 
 	clearText = clearText[:dataEnd]
@@ -145,7 +142,7 @@ func (c CipherCBC) Decrypt(rec *record, key []byte, iv []byte, mac []byte) ([]by
 	}
 
 	if DebugEncryption && c.peer != nil {
-		logDebug(c.peer, "dtls: decrypt clearText[%X][%d]", clearText, len(clearText))
+		logDebug(c.peer, rec, "decrypt clearText[%X][%d]", clearText, len(clearText))
 	}
 
 	return clearText, nil
