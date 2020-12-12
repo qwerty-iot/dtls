@@ -85,6 +85,14 @@ func (p *Peer) Read(timeout time.Duration) ([]byte, error) {
 	}
 }
 
+func (p *Peer) SessionExport() string {
+	if p.session != nil && p.session.isHandshakeDone() {
+		return p.session.export()
+	} else {
+		return ""
+	}
+}
+
 func (p *Peer) Lock() {
 	p.mux.Lock()
 }

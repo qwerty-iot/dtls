@@ -25,7 +25,7 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 	} else if s.decrypt {
 		if s.keyBlock == nil {
 			err = errors.New("dtls: key block not initialized")
-			logWarn(s.peer, rec, err, "tried to decrypt but keyBlock not initialized.")
+			logWarn(s.peer, rec, err, "tried to decrypt but KeyBlock not initialized.")
 			return nil, nil, err
 		}
 		if len(rec.Data) < 8 {
@@ -54,7 +54,7 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 
 		clearText, err := s.cipher.Decrypt(rec, key, iv, mac)
 		if err != nil {
-			if s.handshake.firstDecrypt {
+			if s.handshake != nil && s.handshake.firstDecrypt {
 				//callback that psk is invalid
 				logWarn(s.peer, rec, nil, "PSK is most likely invalid for identity: %s", s.Identity)
 				s.handshake.firstDecrypt = false
@@ -67,7 +67,7 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 				return nil, nil, err
 			}
 		}
-		if s.handshake.firstDecrypt {
+		if s.handshake != nil && s.handshake.firstDecrypt {
 			s.handshake.firstDecrypt = false
 		}
 
@@ -80,10 +80,10 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 
 func (s *session) parseHandshake(rec *record) (*handshake, error) {
 	hs, err := parseHandshake(rec.Data)
-	s.updateHash(rec.Data)
 	if err != nil {
 		return nil, err
 	}
+	s.updateHash(rec.Data)
 	logDebug(s.peer, rec, "read handshake: %s", hs.Print())
 	return hs, err
 }
@@ -163,7 +163,7 @@ func (s *session) generateCookie() {
 
 func (s *session) startHandshake() error {
 	reqHs := newHandshake(handshakeType_ClientHello)
-	reqHs.ClientHello.Init(s.Id, s.client.Random, nil, s.listener.cipherSuites, s.listener.compressionMethods)
+	reqHs.ClientHello.Init(s.Id, s.handshake.client.Random, nil, s.listener.cipherSuites, s.listener.compressionMethods)
 
 	err := s.writeHandshake(reqHs)
 	if err != nil {
@@ -178,7 +178,7 @@ func (s *session) waitForHandshake(timeout time.Duration) error {
 	}
 	select {
 	case err := <-s.handshake.done:
-		if s.handshake.state == "finished" {
+		if s.handshake != nil && s.handshake.state == "finished" {
 			return nil
 		} else {
 			return err
@@ -194,7 +194,11 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 	var reqHs, rspHs *handshake
 	var err error
 
-	logDebug(s.peer, rspRec, "processing packet, current state: %s", s.handshake.state)
+	if s.handshake != nil {
+		logDebug(s.peer, rspRec, "processing packet, current state: %s", s.handshake.state)
+	} else {
+		logDebug(s.peer, rspRec, "processing packet, current state: nil")
+	}
 
 	switch rspRec.ContentType {
 	case ContentType_Handshake:
@@ -237,16 +241,16 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 							err = errors.New("dtls: no valid psk for identity")
 							break
 						}
-						s.Psk = psk
+						s.handshake.psk = psk
 
-						s.resumed = true
+						s.handshake.resumed = true
 					} else {
 						logDebug(s.peer, rspRec, "tried to resume session, but it was not found")
-						s.resumed = false
+						s.handshake.resumed = false
 					}
 				}
 
-				s.client.RandomTime, s.client.Random = rspHs.ClientHello.GetRandom()
+				s.handshake.client.RandomTime, s.handshake.client.Random = rspHs.ClientHello.GetRandom()
 				s.selectedCipherSuite = rspHs.ClientHello.SelectCipherSuite(s.listener.cipherSuites)
 				s.cipher = getCipher(s.peer, s.selectedCipherSuite)
 				if s.cipher == nil {
@@ -254,7 +258,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 					err = errors.New("dtls: no valid cipher available")
 					break
 				}
-				if !s.resumed {
+				if !s.handshake.resumed {
 					s.handshake.state = "recv-clienthello"
 				} else {
 					s.handshake.state = "recv-clienthello-resumed"
@@ -272,10 +276,10 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			}
 			s.handshake.state = "recv-helloverifyrequest"
 		case handshakeType_ServerHello:
-			s.server.RandomTime, s.server.Random = rspHs.ServerHello.GetRandom()
+			s.handshake.server.RandomTime, s.handshake.server.Random = rspHs.ServerHello.GetRandom()
 			if reflect.DeepEqual(s.Id, rspHs.ServerHello.GetSessionId()) {
 				//resuming session
-				s.resumed = true
+				s.handshake.resumed = true
 			} else {
 				s.Id = rspHs.ServerHello.GetSessionId()
 			}
@@ -294,7 +298,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				err = errors.New("dtls: no valid psk for identity")
 				break
 			}
-			s.Psk = psk
+			s.handshake.psk = psk
 			s.initKeyBlock()
 
 			s.handshake.state = "recv-clientkeyexchange"
@@ -351,7 +355,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 		case "recv-clienthello":
 			//TODO consider adding serverkeyexchange, not sure what to recommend as a server identity
 			reqHs = newHandshake(handshakeType_ServerHello)
-			reqHs.ServerHello.Init(s.server.Random, s.Id, s.selectedCipherSuite)
+			reqHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
 
 			reqHs2 := newHandshake(handshakeType_ServerHelloDone)
 			reqHs2.ServerHelloDone.Init()
@@ -363,7 +367,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 		case "recv-clienthello-resumed":
 
 			reqHs = newHandshake(handshakeType_ServerHello)
-			reqHs.ServerHello.Init(s.server.Random, s.Id, s.selectedCipherSuite)
+			reqHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
 			err = s.writeHandshake(reqHs)
 
 			s.initKeyBlock()
@@ -387,7 +391,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			}
 		case "recv-helloverifyrequest":
 			reqHs = newHandshake(handshakeType_ClientHello)
-			err = reqHs.ClientHello.Init(s.Id, s.client.Random, s.handshake.cookie, s.listener.cipherSuites, s.listener.compressionMethods)
+			err = reqHs.ClientHello.Init(s.Id, s.handshake.client.Random, s.handshake.cookie, s.listener.cipherSuites, s.listener.compressionMethods)
 			if err != nil {
 				break
 			}
@@ -400,14 +404,14 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			if len(s.Identity) > 0 {
 				psk := GetPskFromKeystore(s.Identity, s.peer.RemoteAddr())
 				if len(psk) > 0 {
-					s.Psk = psk
+					s.handshake.psk = psk
 				} else {
 					err = errors.New("dtls: no psk could be found")
 					break
 				}
 			}
 
-			if !s.resumed {
+			if !s.handshake.resumed {
 				reqHs = newHandshake(handshakeType_ClientKeyExchange)
 
 				reqHs.ClientKeyExchange.Init([]byte(s.Identity))
@@ -434,7 +438,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				break
 			}
 		case "finished":
-			if s.Type == SessionType_Server && !s.resumed {
+			if s.Type == SessionType_Server && !s.handshake.resumed {
 				rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
 				if DebugHandshake {
 					logDebug(s.peer, rspRec, "finish incremented inc epoch from %d to %d", s.getEpoch(), s.getEpoch()+1)
@@ -488,6 +492,8 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				break FORFIN
 			}
 		}
+		close(s.handshake.done)
+		s.handshake = nil
 	}
 
 	return nil

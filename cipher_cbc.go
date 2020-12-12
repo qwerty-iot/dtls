@@ -26,8 +26,8 @@ func (c CipherCBC) GetPrfSize() int {
 	return 128
 }
 
-func (c CipherCBC) GenerateKeyBlock(masterSecret []byte, rawKeyBlock []byte) *keyBlock {
-	return &keyBlock{
+func (c CipherCBC) GenerateKeyBlock(masterSecret []byte, rawKeyBlock []byte) *KeyBlock {
+	return &KeyBlock{
 		MasterSecret:   masterSecret,
 		ClientMac:      rawKeyBlock[0:32],
 		ServerMac:      rawKeyBlock[32:64],

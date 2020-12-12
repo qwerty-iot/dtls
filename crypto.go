@@ -40,17 +40,17 @@ func newAad(epoch uint16, seq uint64, msgType uint8, dataLen uint16) []byte {
 	return w.Bytes()
 }
 
-type keyBlock struct {
-	MasterSecret   []byte
-	ClientMac      []byte
-	ServerMac      []byte
-	ClientWriteKey []byte
-	ServerWriteKey []byte
-	ClientIV       []byte
-	ServerIV       []byte
+type KeyBlock struct {
+	MasterSecret   []byte `json:"masterSecret"`
+	ClientMac      []byte `json:"clientMac"`
+	ServerMac      []byte `json:"serverMac"`
+	ClientWriteKey []byte `json:"clientWriteKey"`
+	ServerWriteKey []byte `json:"serverWriteKey"`
+	ClientIV       []byte `json:"clientIV"`
+	ServerIV       []byte `json:"serverIV"`
 }
 
-func (kb *keyBlock) Print() string {
+func (kb *KeyBlock) Print() string {
 	return fmt.Sprintf("ClientWriteKey[%X], ServerWriteKey[%X], ClientIV[%X], ServerIV[%X]", kb.ClientWriteKey, kb.ServerWriteKey, kb.ClientIV, kb.ServerIV)
 }
 

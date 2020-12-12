@@ -30,6 +30,7 @@ type msg struct {
 
 // This callback is invoked each time a handshake completes, if the handshake failed, the reason is stored in error
 var HandshakeCompleteCallback func(*Peer, []byte, time.Duration, error)
+var SessionImportCallback func(*Peer) string
 
 func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, error) {
 	utrans, err := newUdpTransport(listener, readTimeout)
@@ -169,6 +170,14 @@ func (l *Listener) addServerPeer(tpeer TransportEndpoint) (*Peer, error) {
 	peer := &Peer{transport: tpeer}
 	peer.session = newServerSession(peer)
 	peer.session.listener = l
+
+	if SessionImportCallback != nil {
+		raw := SessionImportCallback(peer)
+		if len(raw) != 0 {
+			peer.session.restore(raw)
+		}
+	}
+
 	//disabled lock because it is included in the existing lock
 	//l.mux.Lock()
 	l.peers[peer.RemoteAddr()] = peer
@@ -264,4 +273,12 @@ func (l *Listener) CountPeers() int {
 	count = len(l.peers)
 	l.mux.Unlock()
 	return count
+}
+
+func (l *Listener) EachPeer(callback func(peer *Peer)) {
+	l.mux.Lock()
+	for _, peer := range l.peers {
+		callback(peer)
+	}
+	l.mux.Unlock()
 }
