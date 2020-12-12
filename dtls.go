@@ -21,7 +21,7 @@ type Listener struct {
 	compressionMethods []CompressionMethod
 }
 
-var PeerInactivityTimeout = time.Hour * 24
+var SessionInactivityTimeout = time.Hour * 24
 
 type msg struct {
 	data []byte
@@ -31,6 +31,7 @@ type msg struct {
 // This callback is invoked each time a handshake completes, if the handshake failed, the reason is stored in error
 var HandshakeCompleteCallback func(*Peer, []byte, time.Duration, error)
 var SessionImportCallback func(*Peer) string
+var SessionExportCallback func(*Peer)
 
 func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, error) {
 	utrans, err := newUdpTransport(listener, readTimeout)
@@ -132,10 +133,13 @@ func sweeper(l *Listener) {
 			logDebug(nil, nil, "sweeper shutting down")
 			return
 		}
-		expiry := time.Now().Add(PeerInactivityTimeout * -1)
+		expiry := time.Now().Add(SessionInactivityTimeout * -1)
 		for _, peer := range l.peers {
 			if peer.activity.Before(expiry) {
 				logDebug(peer, nil, "sweeper removing peer")
+				if SessionExportCallback != nil {
+					SessionExportCallback(peer)
+				}
 				l.RemovePeer(peer, AlertDesc_Noop)
 			}
 		}
