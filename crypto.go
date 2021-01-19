@@ -6,6 +6,7 @@ package dtls
 
 import (
 	"bytes"
+	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
@@ -54,7 +55,6 @@ func (kb *KeyBlock) Print() string {
 	return fmt.Sprintf("ClientWriteKey[%X], ServerWriteKey[%X], ClientIV[%X], ServerIV[%X]", kb.ClientWriteKey, kb.ServerWriteKey, kb.ClientIV, kb.ServerIV)
 }
 
-//dtls_psk_pre_master_secret(unsigned char *key, size_t keylen,unsigned char *result, size_t result_len)
 func generatePskPreMasterSecret(psk []byte) []byte {
 
 	zeroBuffer := make([]byte, len(psk))
@@ -67,6 +67,18 @@ func generatePskPreMasterSecret(psk []byte) []byte {
 	w.PutBytes(psk)
 
 	return w.Bytes()
+}
+
+func generateEccPreMasterSecret(publicKey []byte, privateKey []byte) []byte {
+
+	x, y := elliptic.Unmarshal(elliptic.P256(), publicKey)
+
+	result, _ := elliptic.P256().ScalarMult(x, y, privateKey)
+	preMasterSecret := make([]byte, (elliptic.P256().Params().BitSize+7)>>3)
+	resultBytes := result.Bytes()
+	copy(preMasterSecret[len(preMasterSecret)-len(resultBytes):], resultBytes)
+
+	return resultBytes
 }
 
 func generatePrf(key, random1, random2 []byte, label string, keyLen int) []byte {

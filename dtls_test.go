@@ -287,7 +287,7 @@ func (s *DtlsSuite) TestResume() {
 	client3.AddCipherSuite(CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
 	client3.AddCompressionMethod(CompressionMethod_Null)
 
-	transport, err = client3.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", Identity: []byte("myIdentity"), SessionId: sessionId, HandshakeTimeout: time.Second * 20})
+	transport, err = client3.AddPeerWithParams(&PeerParams{Addr: "127.0.0.1:5684", peerIdentity: []byte("myIdentity"), SessionId: sessionId, HandshakeTimeout: time.Second * 20})
 	assert.NotNil(s.T(), transport)
 	assert.Nil(s.T(), err)
 

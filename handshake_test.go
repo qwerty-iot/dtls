@@ -3,10 +3,11 @@ package dtls
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
 func TestHandshakeSuite(t *testing.T) {
@@ -274,7 +275,7 @@ func (s *HandshakeSuite) TestClientKeyExchangeDecode() {
 	assert.Nil(s.T(), err)
 	assert.NotNil(s.T(), handshake)
 	assert.NotNil(s.T(), handshake.ClientKeyExchange)
-	assert.Equal(s.T(), "Identity", string(handshake.ClientKeyExchange.GetIdentity()))
+	assert.Equal(s.T(), "peerIdentity", string(handshake.ClientKeyExchange.GetIdentity()))
 
 	handshake.Print()
 }
@@ -307,7 +308,7 @@ func (s *HandshakeSuite) TestServerKeyExchangeEncode() {
 	identity := randomBytes(20)
 
 	hs := newHandshake(handshakeType_ServerKeyExchange)
-	hs.ServerKeyExchange.Init(identity)
+	hs.ServerKeyExchange.InitPsk(identity)
 	hsbytes := hs.Bytes()
 
 	handshake, err := parseHandshake(hsbytes)

@@ -45,14 +45,14 @@ func (p *Peer) RemoteAddr() string {
 }
 
 func (p *Peer) SessionIdentity() []byte {
-	return p.session.Identity
+	return p.session.peerIdentity
 }
 
 func (p *Peer) SessionIdentityString() string {
-	if utf8.Valid(p.session.Identity) {
-		return string(p.session.Identity)
+	if utf8.Valid(p.session.peerIdentity) {
+		return string(p.session.peerIdentity)
 	} else {
-		return hex.EncodeToString(p.session.Identity)
+		return hex.EncodeToString(p.session.peerIdentity)
 	}
 }
 

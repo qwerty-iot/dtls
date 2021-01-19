@@ -11,7 +11,7 @@ func (h *serverHelloDone) Init() {
 	return
 }
 
-func (h *serverHelloDone) Parse(rdr *byteReader) error {
+func (h *serverHelloDone) Parse(rdr *byteReader, size int) error {
 	return nil
 }
 

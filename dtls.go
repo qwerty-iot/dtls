@@ -5,6 +5,9 @@
 package dtls
 
 import (
+	"crypto/ecdsa"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"sync"
 	"time"
@@ -19,6 +22,9 @@ type Listener struct {
 	isShutdown         bool
 	cipherSuites       []CipherSuite
 	compressionMethods []CompressionMethod
+	certificate        tls.Certificate
+	maxPacketSize      int
+	maxHandshakeSize   int
 }
 
 var SessionInactivityTimeout = time.Hour * 24
@@ -32,6 +38,7 @@ type msg struct {
 var HandshakeCompleteCallback func(*Peer, []byte, time.Duration, error)
 var SessionImportCallback func(*Peer) string
 var SessionExportCallback func(*Peer)
+var ValidateCertificateCallback func(*Peer, *x509.Certificate) error
 
 func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, error) {
 	utrans, err := newUdpTransport(listener, readTimeout)
@@ -39,7 +46,7 @@ func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, erro
 		return nil, err
 	}
 
-	l := &Listener{transport: utrans, peers: make(map[string]*Peer), readQueue: make(chan *msg, 128)}
+	l := &Listener{transport: utrans, peers: make(map[string]*Peer), readQueue: make(chan *msg, 128), maxPacketSize: 1400, maxHandshakeSize: 1200}
 	go sweeper(l)
 	l.wg.Add(1)
 	go receiver(l)
@@ -147,6 +154,19 @@ func sweeper(l *Listener) {
 	}
 }
 
+func (l *Listener) SetCertificate(cert tls.Certificate) error {
+	if _, ok := cert.PrivateKey.(*ecdsa.PrivateKey); !ok {
+		return errors.New("dtls: certificate must be ecdsa")
+	}
+	l.certificate = cert
+	return nil
+}
+
+func (l *Listener) SetFrameLimits(maxPacket int, maxHandshake int) {
+	l.maxPacketSize = maxPacket
+	l.maxHandshakeSize = maxHandshake
+}
+
 func (l *Listener) RemovePeer(peer *Peer, alertDesc uint8) {
 	l.mux.Lock()
 	if alertDesc != AlertDesc_Noop {
@@ -206,7 +226,7 @@ func (l *Listener) AddPeerWithParams(params *PeerParams) (*Peer, error) {
 	peer.session = newClientSession(peer)
 	peer.name = peer.RemoteAddr()
 	peer.session.listener = l
-	peer.session.Identity = params.Identity
+	peer.session.peerIdentity = params.Identity
 	if params.SessionId != nil && len(params.SessionId) != 0 {
 		peer.session.Id = params.SessionId
 	}

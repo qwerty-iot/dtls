@@ -11,7 +11,7 @@ func (h *unknown) Init() {
 	return
 }
 
-func (h *unknown) Parse(rdr *byteReader) error {
+func (h *unknown) Parse(rdr *byteReader, size int) error {
 	return nil
 }
 

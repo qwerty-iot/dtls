@@ -20,7 +20,7 @@ func (h *helloVerifyRequest) Init(cookie []byte) {
 	h.cookieLen = uint8(len(h.cookie))
 }
 
-func (h *helloVerifyRequest) Parse(rdr *byteReader) error {
+func (h *helloVerifyRequest) Parse(rdr *byteReader, size int) error {
 	h.version = rdr.GetUint16()
 	h.cookieLen = rdr.GetUint8()
 	if h.cookieLen > 0 {

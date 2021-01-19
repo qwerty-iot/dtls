@@ -35,7 +35,7 @@ func (s *SessionSuite) Log(msg string, args ...interface{}) {
 func (s *SessionSuite) TestTypeToString() {
 
 	peer := newClientSession(&Peer{transport: &nilPeer{}})
-	peer.Identity = []byte("Identity")
+	peer.peerIdentity = []byte("peerIdentity")
 	peer.handshake.client.Random, _ = hex.DecodeString("00000001E68D63E65CDEF492AA9877330CA7EEB5C786487F31DAE89452104156")
 	peer.handshake.server.Random, _ = hex.DecodeString("5823185CF999576643D2E838C4FCAEAC6AE89C12C9E25517D95FE115C50BF080")
 	peer.handshake.psk, _ = hex.DecodeString("0011223344")

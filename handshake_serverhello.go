@@ -30,7 +30,7 @@ func (h *serverHello) Init(randomBytes []byte, sessionId []byte, cipherSuite Cip
 	h.compressionMethod = CompressionMethod_Null
 }
 
-func (h *serverHello) Parse(rdr *byteReader) error {
+func (h *serverHello) Parse(rdr *byteReader, size int) error {
 	h.version = rdr.GetUint16()
 	h.randomBytes = rdr.GetBytes(32)
 	h.randomTime = binary.BigEndian.Uint32(h.randomBytes[:4])
@@ -54,6 +54,21 @@ func (h *serverHello) Bytes() []byte {
 	}
 	w.PutUint16(uint16(h.cipherSuite))
 	w.PutUint8(uint8(h.compressionMethod))
+
+	if h.cipherSuite == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 {
+		// TODO: Implement proper extensions
+		w.PutUint16(14) // extensions length
+
+		w.PutUint16(10)     // supported_groups
+		w.PutUint16(4)      // len
+		w.PutUint16(2)      // list count
+		w.PutUint16(0x0017) // secp256r1
+
+		w.PutUint16(11) // ec_point_formats
+		w.PutUint16(2)
+		w.PutUint8(1)
+		w.PutUint8(0)
+	}
 
 	return w.Bytes()
 }

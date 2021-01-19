@@ -1,7 +1,7 @@
 dtls
 ======
 
-[![Build Status](https://travis-ci.org/bocajim/dtls.svg?branch=master)](https://travis-ci.org/qwerty-iot/dtls)
+[![Build Status](https://travis-ci.org/qwerty-iot/dtls.svg?branch=master)](https://travis-ci.org/qwerty-iot/dtls)
 [![Coverage](http://gocover.io/_badge/github.com/qwerty-iot/dtls)](http://gocover.io/github.com/qwerty-iot/dtls)
 [![GoDoc](https://godoc.org/github.com/qwerty-iot/dtls?status.png)](http://godoc.org/github.com/qwerty-iot/dtls)
 [![License](https://img.shields.io/github/license/qwerty-iot/dtls)](https://opensource.org/licenses/MPL-2.0)
@@ -9,8 +9,9 @@ dtls
 
 https://github.com/qwerty-iot/dtls
 
-This package implements a [RFC-4347](https://tools.ietf.org/html/rfc4347) compliant DTLS client and server. NOTE: This
-library is under active development and is not yet stable enough to be used in production.
+Renamed from https://github.com/bocajim/dtls
+
+This package implements a [RFC-4347](https://tools.ietf.org/html/rfc4347) compliant DTLS client and server.
 
 Key Features
 ------------
@@ -19,7 +20,9 @@ Key Features
 * Supports both client and server via UDP
 * Supports TLS_PSK_WITH_AES_128_CCM_8 cipher [RFC-6655](https://tools.ietf.org/html/rfc6655)
 * Supports TLS_PSK_WITH_AES_128_CBC_SHA256 cipher [RFC-5487](https://tools.ietf.org/html/rfc5487)
-* Supports pre-shared key authentication, does not support certificate based authentication
+* Supports TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 cipher [RFC-7251](https://tools.ietf.org/html/rfc7251)
+* Supports pre-shared key authentication
+* Supports certificate based authentication
 * Supports DTLS session resumption
 * Supports persisting session data for resumption later
 * Designed for OMA LWM2M
@@ -54,6 +57,18 @@ peer, err := listener.AddPeer("127.0.0.1:5684", "myIdentity")
 
 err = peer.Write("hello world")
 data, rsp := listener.Read()
+```
+
+Generating Certificates
+-----------------------
+The following commands can be used to generate certificates for testing:
+
+```bash
+# generate private key
+openssl ecparam -out key.pem -name prime256v1 -genkey
+
+# generate certificate
+openssl req -new -key key.pem -x509 -nodes -days 3650 -out cert.pem
 ```
 
 Documentation

@@ -63,6 +63,9 @@ func (w *byteWriter) PutString(value string) {
 }
 
 func (w *byteWriter) PutBytes(value []byte) {
+	if len(value) == 0 {
+		return
+	}
 	w.buf.Write(value)
 	return
 }

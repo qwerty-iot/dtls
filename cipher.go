@@ -9,8 +9,9 @@ import "fmt"
 type CipherSuite uint16
 
 const (
-	CipherSuite_TLS_PSK_WITH_AES_128_CCM_8      CipherSuite = 0xC0A8
-	CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256 CipherSuite = 0x00ae
+	CipherSuite_TLS_PSK_WITH_AES_128_CCM_8         CipherSuite = 0xC0A8
+	CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256    CipherSuite = 0x00AE
+	CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 CipherSuite = 0xC0AE
 )
 
 type Cipher interface {
@@ -26,6 +27,8 @@ func getCipher(peer *Peer, cipherSuite CipherSuite) Cipher {
 		return CipherCcm{peer: peer}
 	case CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256:
 		return CipherCBC{peer: peer}
+	case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8:
+		return CipherCcm{peer: peer}
 	}
 	return nil
 }
@@ -35,7 +38,9 @@ func cipherSuiteToString(c CipherSuite) string {
 	case CipherSuite_TLS_PSK_WITH_AES_128_CCM_8:
 		return "TLS_PSK_WITH_AES_128_CCM_8(0xC0A8)"
 	case CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256:
-		return "TLS_PSK_WITH_AES_128_CBC_SHA256(0xC0AE)"
+		return "TLS_PSK_WITH_AES_128_CBC_SHA256(0x00AE)"
+	case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8:
+		return "TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8(0xC0AE)"
 	}
 	return fmt.Sprintf("Unknown(0x%X)", c)
 }

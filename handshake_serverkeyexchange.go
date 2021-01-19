@@ -5,41 +5,92 @@
 package dtls
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 )
 
 type serverKeyExchange struct {
-	identityLen uint16
-	identity    []byte
+	identity []byte
+
+	curve     eccCurve
+	publicKey []byte
+	signature []byte
 }
 
-func (h *serverKeyExchange) Init(identity []byte) {
+func (h *serverKeyExchange) InitPsk(identity []byte) {
 	h.identity = identity
-	h.identityLen = uint16(len(h.identity))
+}
+
+func (h *serverKeyExchange) InitCert(curve eccCurve, publicKey []byte, signature []byte) {
+	h.curve = curve
+	h.publicKey = publicKey
+	h.signature = signature
 }
 
 func (h *serverKeyExchange) GetIdentity() []byte {
 	return h.identity
 }
 
-func (h *serverKeyExchange) Parse(rdr *byteReader) error {
+func (h *serverKeyExchange) GetCurve() eccCurve {
+	return h.curve
+}
 
-	h.identityLen = rdr.GetUint16()
-	if h.identityLen > 0 {
-		h.identity = rdr.GetBytes(int(h.identityLen))
+func (h *serverKeyExchange) GetPublicKey() []byte {
+	return h.publicKey
+}
+
+func (h *serverKeyExchange) GetSignature() []byte {
+	return h.signature
+}
+
+func (h *serverKeyExchange) Parse(rdr *byteReader, size int) error {
+
+	b0 := rdr.GetUint8()
+	if b0 == 0x03 {
+		h.curve = eccCurve(rdr.GetUint16())
+		l := int(rdr.GetUint8())
+		if l > 0 {
+			h.publicKey = rdr.GetBytes(l)
+			rdr.GetUint8()
+			rdr.GetUint8()
+			l = int(rdr.GetUint16())
+			h.signature = rdr.GetBytes(l)
+		}
+	} else {
+		b1 := rdr.GetUint8()
+		l := binary.BigEndian.Uint16([]byte{b0, b1})
+		if l > 0 {
+			h.identity = rdr.GetBytes(int(l))
+		}
 	}
 	return nil
 }
 
 func (h *serverKeyExchange) Bytes() []byte {
 	w := newByteWriter()
-	w.PutUint16(h.identityLen)
-	if h.identityLen > 0 {
+
+	l := len(h.identity)
+	if l > 0 {
+		w.PutUint16(uint16(l))
 		w.PutBytes(h.identity)
+	} else {
+		w.PutUint8(0x03)
+		w.PutUint16(uint16(h.curve))
+		w.PutUint8(byte(len(h.publicKey)))
+		w.PutBytes(h.publicKey)
+		w.PutUint8(0x04) // SHA256
+		w.PutUint8(0x03) // ECDSA
+		w.PutUint16(uint16(len(h.signature)))
+		w.PutBytes(h.signature)
 	}
 	return w.Bytes()
 }
 
 func (h *serverKeyExchange) Print() string {
-	return fmt.Sprintf("identity[%s][%d]", h.identity, h.identityLen)
+	if len(h.identity) != 0 {
+		return fmt.Sprintf("identity[%s][%d]", h.identity, len(h.identity))
+	} else {
+		return fmt.Sprintf("eccCurve[%d] publicKey[%s] signature[%s]", h.curve, hex.EncodeToString(h.publicKey), hex.EncodeToString(h.signature))
+	}
 }

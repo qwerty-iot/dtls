@@ -21,7 +21,8 @@ type session struct {
 	peer                *Peer
 	listener            *Listener
 	started             time.Time
-	Identity            []byte
+	peerIdentity        []byte
+	peerPublicKey       []byte
 	epoch               uint16
 	sequenceNumber      uint64
 	keyBlock            *KeyBlock
@@ -40,7 +41,11 @@ type sessionHandshake struct {
 	savedHash    []byte
 	seq          uint16
 	err          error
+	certs        [][]byte
 	psk          []byte
+	eccCurve     eccCurve
+	eccKeypair   *eccKeypair
+	verifySum    []byte
 	firstDecrypt bool
 	done         chan error
 	client       struct {
@@ -130,10 +135,20 @@ func (s *session) getNextSequence() uint64 {
 	return seq
 }
 
+func (s *session) getSequence() uint64 {
+	seq := s.sequenceNumber
+	return seq
+}
+
 func (s *session) initKeyBlock() {
 
 	//generate pre-master secret
-	preMasterSecret := generatePskPreMasterSecret(s.handshake.psk)
+	var preMasterSecret []byte
+	if len(s.handshake.psk) != 0 {
+		preMasterSecret = generatePskPreMasterSecret(s.handshake.psk)
+	} else {
+		preMasterSecret = generateEccPreMasterSecret(s.peerPublicKey, s.handshake.eccKeypair.privateKey)
+	}
 
 	//generate master secret
 	masterSecret := generatePrf(preMasterSecret, s.handshake.client.Random, s.handshake.server.Random, "master secret", 48)
@@ -144,7 +159,11 @@ func (s *session) initKeyBlock() {
 	s.keyBlock = s.cipher.GenerateKeyBlock(masterSecret, rawKeyBlock)
 
 	if DebugEncryption {
-		logDebug(s.peer, nil, "identity[%s] psk[%X] clientRandom[%X] serverRandom[%X]", string(s.Identity), s.handshake.psk, s.handshake.client.Random, s.handshake.server.Random)
+		if len(s.peerIdentity) != 0 {
+			logDebug(s.peer, nil, "identity[%s] psk[%X] clientRandom[%X] serverRandom[%X]", string(s.peerIdentity), s.handshake.psk, s.handshake.client.Random, s.handshake.server.Random)
+		} else {
+			logDebug(s.peer, nil, "publicKey[%X] clientRandom[%X] serverRandom[%X]", s.peerPublicKey, s.handshake.client.Random, s.handshake.server.Random)
+		}
 		logDebug(s.peer, nil, "%s", s.keyBlock.Print())
 	}
 

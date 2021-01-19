@@ -17,7 +17,7 @@ func (h *finished) Init(masterSecret []byte, hash []byte, label string) {
 	h.data = generatePrf(masterSecret, []byte(" finished"), hash, label, 12)
 }
 
-func (h *finished) Parse(rdr *byteReader) error {
+func (h *finished) Parse(rdr *byteReader, size int) error {
 	h.data = rdr.GetBytes(12)
 
 	return nil
