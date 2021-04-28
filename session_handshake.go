@@ -408,6 +408,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 							err = errors.New("dtls: certificate validation failed: " + err.Error())
 							break
 						}
+						s.peerCert = cert
 					}
 				} else {
 					err = errors.New("dtls: no certificate to validate")

@@ -6,6 +6,7 @@ package dtls
 
 import (
 	"crypto/sha256"
+	"crypto/x509"
 	"hash"
 	"time"
 )
@@ -22,6 +23,7 @@ type session struct {
 	listener            *Listener
 	started             time.Time
 	peerIdentity        []byte
+	peerCert            *x509.Certificate
 	peerPublicKey       []byte
 	epoch               uint16
 	sequenceNumber      uint64

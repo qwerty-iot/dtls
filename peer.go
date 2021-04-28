@@ -5,6 +5,7 @@
 package dtls
 
 import (
+	"crypto/x509"
 	"encoding/hex"
 	"errors"
 	"sync"
@@ -54,6 +55,20 @@ func (p *Peer) SessionIdentityString() string {
 	} else {
 		return hex.EncodeToString(p.session.peerIdentity)
 	}
+}
+
+func (p *Peer) SessionPublicKey() []byte {
+	if p.session.peerPublicKey != nil && len(p.session.peerPublicKey) != 0 {
+		return p.session.peerPublicKey
+	}
+	return nil
+}
+
+func (p *Peer) SessionCertificate() *x509.Certificate {
+	if p.session.peerCert != nil {
+		return p.session.peerCert
+	}
+	return nil
 }
 
 func (p *Peer) LastActivity() time.Time {
