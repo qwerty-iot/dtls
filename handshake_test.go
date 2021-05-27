@@ -285,7 +285,7 @@ func (s *HandshakeSuite) TestClientKeyExchangeEncode() {
 	identity := randomBytes(20)
 
 	hs := newHandshake(handshakeType_ClientKeyExchange)
-	hs.ClientKeyExchange.Init(identity)
+	hs.ClientKeyExchange.InitPsk(identity)
 	hsbytes := hs.Bytes()
 
 	handshake, err := parseHandshake(hsbytes)

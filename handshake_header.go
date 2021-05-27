@@ -16,13 +16,13 @@ type header struct {
 	FragmentLen   uint32
 }
 
-func (h *header) Parse(rdr *byteReader) error {
+func (h *header) Parse(rdr *byteReader) {
 	h.HandshakeType = handshakeType(rdr.GetUint8())
 	h.Length = rdr.GetUint24()
 	h.Sequence = rdr.GetUint16()
 	h.FragmentOfs = rdr.GetUint24()
 	h.FragmentLen = rdr.GetUint24()
-	return nil
+	return
 }
 
 func (h *header) Bytes() []byte {

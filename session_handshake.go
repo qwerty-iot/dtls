@@ -278,6 +278,10 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			logDebug(s.peer, rspRec, "handshake packet received after handshake is complete")
 			return nil
 		}
+		if !s.isHandshakeDone() && rspRec.Epoch != 0 && !s.decrypt {
+			logDebug(s.peer, rspRec, "encrypted handshake packet received, but cipher not initialized")
+			return nil
+		}
 
 		rspHs, err = s.parseHandshake(rspRec)
 		if err != nil {
