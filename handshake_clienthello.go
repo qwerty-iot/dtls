@@ -102,7 +102,8 @@ func (h *clientHello) Bytes() []byte {
 			w.PutUint8(uint8(cm))
 		}
 	}
-	if h.cipherSuites[0] == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 {
+	if h.cipherSuites[0] == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 ||
+		h.cipherSuites[0] == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 {
 		// TODO: Implement proper extensions
 		w.PutUint16(24) // extensions length
 

@@ -475,7 +475,8 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			reqHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
 			hsArr = append(hsArr, reqHs)
 
-			if s.selectedCipherSuite == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 {
+			if s.selectedCipherSuite == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 ||
+				s.selectedCipherSuite == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 {
 				reqHs = newHandshake(handshakeType_Certificate)
 				// need server cert
 				_ = reqHs.Certificate.Init(s.listener.certificate.Certificate)
