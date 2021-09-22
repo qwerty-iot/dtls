@@ -15,6 +15,22 @@ const (
 	CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 CipherSuite = 0xC023
 )
 
+func (cs CipherSuite) NeedPsk() bool {
+	switch cs {
+	case CipherSuite_TLS_PSK_WITH_AES_128_CCM_8, CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256:
+		return true
+	}
+	return false
+}
+
+func (cs CipherSuite) NeedCert() bool {
+	switch cs {
+	case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8, CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256:
+		return true
+	}
+	return false
+}
+
 type Cipher interface {
 	GetPrfSize() int
 	GenerateKeyBlock(masterSecret []byte, rawKeyBlock []byte) *KeyBlock

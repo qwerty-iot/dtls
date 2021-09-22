@@ -47,6 +47,7 @@ type sessionHandshake struct {
 	psk          []byte
 	eccCurve     eccCurve
 	eccKeypair   *eccKeypair
+	masterSecret []byte
 	verifySum    []byte
 	firstDecrypt bool
 	done         chan error
@@ -144,21 +145,24 @@ func (s *session) getSequence() uint64 {
 
 func (s *session) initKeyBlock() {
 
-	//generate pre-master secret
-	var preMasterSecret []byte
-	if len(s.handshake.psk) != 0 {
-		preMasterSecret = generatePskPreMasterSecret(s.handshake.psk)
-	} else {
-		preMasterSecret = generateEccPreMasterSecret(s.peerPublicKey, s.handshake.eccKeypair.privateKey)
+	if !s.handshake.resumed {
+		//generate pre-master secret
+		var preMasterSecret []byte
+		if len(s.handshake.psk) != 0 {
+			preMasterSecret = generatePskPreMasterSecret(s.handshake.psk)
+		} else {
+			preMasterSecret = generateEccPreMasterSecret(s.peerPublicKey, s.handshake.eccKeypair.privateKey)
+		}
+
+		//generate master secret
+		s.handshake.masterSecret = generatePrf(preMasterSecret, s.handshake.client.Random, s.handshake.server.Random, "master secret", 48)
+
 	}
 
-	//generate master secret
-	masterSecret := generatePrf(preMasterSecret, s.handshake.client.Random, s.handshake.server.Random, "master secret", 48)
-
 	//generate key block
-	rawKeyBlock := generatePrf(masterSecret, s.handshake.server.Random, s.handshake.client.Random, "key expansion", s.cipher.GetPrfSize())
+	rawKeyBlock := generatePrf(s.handshake.masterSecret, s.handshake.server.Random, s.handshake.client.Random, "key expansion", s.cipher.GetPrfSize())
 
-	s.keyBlock = s.cipher.GenerateKeyBlock(masterSecret, rawKeyBlock)
+	s.keyBlock = s.cipher.GenerateKeyBlock(s.handshake.masterSecret, rawKeyBlock)
 
 	if DebugEncryption {
 		if len(s.peerIdentity) != 0 {

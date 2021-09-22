@@ -7,7 +7,6 @@ package dtls
 import (
 	"bytes"
 	"crypto/x509"
-	"encoding/hex"
 	"errors"
 	"reflect"
 	"sync"
@@ -309,27 +308,6 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 					break
 				}
 
-				if false && rspHs.ClientHello.HasSessionId() {
-					//resuming a session
-					s.peerIdentity = getIdentityFromCache(rspHs.ClientHello.GetSessionIdStr())
-					if len(s.peerIdentity) > 0 {
-						s.Id = rspHs.ClientHello.GetSessionId()
-						logDebug(s.peer, rspRec, "resuming previously established session, set identity: %s", s.peerIdentity)
-
-						psk := GetPskFromKeystore(s.peerIdentity, s.peer.RemoteAddr())
-						if psk == nil {
-							err = errors.New("dtls: no valid psk for identity")
-							break
-						}
-						s.handshake.psk = psk
-
-						s.handshake.resumed = true
-					} else {
-						logDebug(s.peer, rspRec, "tried to resume session, but it was not found")
-						s.handshake.resumed = false
-					}
-				}
-
 				s.handshake.client.RandomTime, s.handshake.client.Random = rspHs.ClientHello.GetRandom()
 				s.selectedCipherSuite = rspHs.ClientHello.SelectCipherSuite(s.listener.cipherSuites)
 				s.cipher = getCipher(s.peer, s.selectedCipherSuite)
@@ -338,6 +316,42 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 					err = errors.New("dtls: no valid cipher available")
 					break
 				}
+
+				if rspHs.ClientHello.HasSessionId() {
+					//resuming a session
+					ce := getFromSessionCache(rspHs.ClientHello.GetSessionIdStr())
+					if ce != nil {
+						s.Id = rspHs.ClientHello.GetSessionId()
+						if s.selectedCipherSuite.NeedPsk() {
+							s.peerIdentity = ce.Identity
+
+							logDebug(s.peer, rspRec, "resuming previously established session, set identity: %s", s.peerIdentity)
+
+							psk := GetPskFromKeystore(s.peerIdentity, s.peer.RemoteAddr())
+							if psk == nil {
+								err = errors.New("dtls: no valid psk for identity")
+								break
+							}
+							s.handshake.psk = psk
+							s.handshake.masterSecret = ce.MasterSecret
+
+							s.handshake.resumed = true
+						} else {
+							s.peerPublicKey = ce.PublicKey
+							s.peerCert = ce.cert
+							s.handshake.eccCurve = ce.EccCurve
+							s.handshake.eccKeypair = ce.EccKeypair
+							s.handshake.masterSecret = ce.MasterSecret
+
+							logDebug(s.peer, rspRec, "resuming previously established session, set certificate")
+							s.handshake.resumed = true
+						}
+					} else {
+						logDebug(s.peer, rspRec, "tried to resume session, but it was not found")
+						s.handshake.resumed = false
+					}
+				}
+
 				if !s.handshake.resumed {
 					s.handshake.state = "recv-clienthello"
 				} else {
@@ -373,7 +387,6 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			s.handshake.state = "recv-helloverifyrequest"
 		case handshakeType_Certificate:
 			s.handshake.certs = rspHs.Certificate.GetCerts()
-			logDebug(s.peer, rspRec, "got certs")
 			s.handshake.state = "recv-certificate"
 		case handshakeType_ServerKeyExchange:
 			s.peerIdentity = rspHs.ServerKeyExchange.GetIdentity()
@@ -390,8 +403,8 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			logDebug(s.peer, rspRec, "certificate verified")
 			s.handshake.state = "recv-certificateverify"
 		case handshakeType_ClientKeyExchange:
-			s.peerIdentity = rspHs.ClientKeyExchange.GetIdentity()
-			if len(s.peerIdentity) != 0 {
+			if s.selectedCipherSuite.NeedPsk() {
+				s.peerIdentity = rspHs.ClientKeyExchange.GetIdentity()
 				psk := GetPskFromKeystore(s.peerIdentity, s.peer.RemoteAddr())
 				if psk == nil {
 					err = errors.New("dtls: no valid psk for identity")
@@ -418,6 +431,14 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 					err = errors.New("dtls: no certificate to validate")
 					break
 				}
+				if s.peerPublicKey == nil {
+					err = errors.New("dtls: peer did not present a public key")
+					break
+				}
+				if s.handshake.eccKeypair == nil {
+					err = errors.New("dtls: ecc keypair not initialized")
+					break
+				}
 			}
 			s.initKeyBlock()
 			s.handshake.verifySum = s.getHash()
@@ -431,7 +452,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			}
 			if rspHs.Finished.Match(s.keyBlock.MasterSecret, s.handshake.savedHash, label) {
 				if s.Type == SessionType_Server {
-					setIdentityToCache(hex.EncodeToString(s.Id), s.peerIdentity)
+					saveToSessionCache(s)
 				}
 				logDebug(s.peer, rspRec, "encryption matches, handshake complete")
 			} else {
@@ -475,8 +496,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			reqHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
 			hsArr = append(hsArr, reqHs)
 
-			if s.selectedCipherSuite == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 ||
-				s.selectedCipherSuite == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 {
+			if s.selectedCipherSuite.NeedCert() {
 				reqHs = newHandshake(handshakeType_Certificate)
 				// need server cert
 				_ = reqHs.Certificate.Init(s.listener.certificate.Certificate)
@@ -542,7 +562,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			}
 		case "recv-serverhellodone":
 
-			if len(s.peerIdentity) > 0 {
+			if s.selectedCipherSuite.NeedPsk() {
 				psk := GetPskFromKeystore(s.peerIdentity, s.peer.RemoteAddr())
 				if len(psk) > 0 {
 					s.handshake.psk = psk
@@ -555,7 +575,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			if !s.handshake.resumed {
 				reqHs = newHandshake(handshakeType_ClientKeyExchange)
 
-				reqHs.ClientKeyExchange.InitPsk([]byte(s.peerIdentity))
+				reqHs.ClientKeyExchange.InitPsk(s.peerIdentity)
 				err = s.writeHandshake(reqHs)
 				if err != nil {
 					break

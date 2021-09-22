@@ -5,15 +5,27 @@
 package dtls
 
 import (
+	"crypto/x509"
+	"encoding/hex"
 	"sync"
 	"time"
 )
 
 type sessionCacheEntry struct {
-	id       []byte
-	len      int
-	identity []byte
-	expires  time.Time
+	Id           []byte    `json:"id"`
+	Identity     []byte    `json:"identity"`
+	Expires      time.Time `json:"expires"`
+	PublicKey    []byte    `json:"publicKey"`
+	cert         *x509.Certificate
+	CertEncoded  []byte      `json:"cert"`
+	EccCurve     eccCurve    `json:"eccCurve"`
+	EccKeypair   *eccKeypair `json:"eccKeypair"`
+	MasterSecret []byte      `json:"masterSecret"`
+}
+
+func (sce *sessionCacheEntry) Marshal() []byte {
+	//tbd
+	return nil
 }
 
 var sessionCache = map[string]sessionCacheEntry{}
@@ -33,21 +45,28 @@ func SessionCacheSize() int {
 	return size
 }
 
-func getIdentityFromCache(sessionId string) []byte {
-	var identity []byte
+func getFromSessionCache(sessionId string) *sessionCacheEntry {
 	sessionCacheMux.Lock()
 	sce, found := sessionCache[sessionId]
-	if found {
-		identity = sce.identity
-	}
 	sessionCacheMux.Unlock()
-	return identity
+	if !found {
+		return nil
+	}
+	return &sce
 }
 
-func setIdentityToCache(sessionId string, identity []byte) {
+func saveToSessionCache(s *session) {
 	now := time.Now()
 	sessionCacheMux.Lock()
-	sessionCache[sessionId] = sessionCacheEntry{identity: identity, expires: now.Add(SessionCacheTtl)}
+	sessionCache[hex.EncodeToString(s.Id)] = sessionCacheEntry{
+		Identity:     s.peerIdentity,
+		MasterSecret: s.handshake.masterSecret,
+		PublicKey:    s.peerPublicKey,
+		cert:         s.peerCert,
+		EccCurve:     s.handshake.eccCurve,
+		EccKeypair:   s.handshake.eccKeypair,
+		Expires:      now.Add(SessionCacheTtl),
+	}
 	sessionCacheMux.Unlock()
 
 	//after entries are added, check to see if we need to sweep out old sessions.
@@ -61,7 +80,7 @@ func sessionCacheSweep() {
 	now := time.Now()
 	sessionCacheMux.Lock()
 	for sessionId, sce := range sessionCache {
-		if sce.expires.Before(now) {
+		if sce.Expires.Before(now) {
 			delete(sessionCache, sessionId)
 		}
 	}

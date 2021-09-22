@@ -6,6 +6,7 @@ package dtls
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 )
 
@@ -144,6 +145,10 @@ func parseHandshake(raw []byte) (*handshake, error) {
 		h.Header = header
 		fragmentData := rdr.GetBytes(int(header.FragmentLen))
 		h.Fragment = make([]byte, 0, h.Header.Length)
+		if h.Header.FragmentLen > 65535 {
+			logDebug(nil, nil, "bad handshake fragment length: %d", h.Header.FragmentLen)
+			return nil, errors.New("bad handshake fragment length")
+		}
 		copy(h.Fragment[h.Header.FragmentOfs:h.Header.FragmentOfs+h.Header.FragmentLen], fragmentData)
 		return h, nil
 	}
