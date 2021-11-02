@@ -14,12 +14,14 @@ import (
 )
 
 type Peer struct {
-	transport TransportEndpoint
-	session   *session
-	activity  time.Time
-	queue     chan []byte
-	mux       sync.Mutex
-	name      string
+	transport      TransportEndpoint
+	session        *session
+	activity       time.Time
+	queue          chan []byte
+	mux            sync.Mutex
+	name           string
+	transportQueue chan []byte
+	processor      bool
 }
 
 func (p *Peer) SetName(name string) {

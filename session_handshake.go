@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -255,9 +256,8 @@ func (s *session) waitForHandshake(timeout time.Duration) error {
 			return err
 		}
 	case <-time.After(timeout):
-		return errors.New("dtls: timed out waiting for handshake to complete")
+		return fmt.Errorf("dtls: timed out waiting for handshake to complete (state:%s)", s.handshake.state)
 	}
-	return errors.New("dtls: unknown wait error")
 }
 
 func (s *session) processHandshakePacket(rspRec *record) error {
@@ -273,6 +273,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 
 	switch rspRec.ContentType {
 	case ContentType_Handshake:
+
 		if s.isHandshakeDone() && (rspRec.Epoch != 0 || rspRec.Data[0] != byte(handshakeType_ClientHello)) {
 			logDebug(s.peer, rspRec, "handshake packet received after handshake is complete")
 			return nil

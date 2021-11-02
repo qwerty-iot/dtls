@@ -54,84 +54,110 @@ func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, erro
 }
 
 func receiver(l *Listener) {
-	if l.isShutdown {
-		logDebug(nil, nil, "receiver shutting down")
-		l.wg.Done()
-		return
-	}
-	data, peer, err := l.transport.ReadPacket()
-	if err != nil {
-		logError(nil, nil, err, "failed to read packet")
-		l.wg.Done()
-		return
-	}
-
-	l.wg.Add(1)
-	go receiver(l)
-
-	l.mux.Lock()
-	p, found := l.peers[peer.String()]
-
-	if !found {
-		//this is where server code will go
-		p, _ = l.addServerPeer(peer)
-		logDebug(p, nil, "received from unknown endpoint")
-	} else {
-		logDebug(p, nil, "received from endpoint")
-	}
-	l.mux.Unlock()
-
-	p.Lock()
-
 	for {
-		rec, rem, err := p.session.parseRecord(data)
+		if l.isShutdown {
+			logDebug(nil, nil, "receiver shutting down")
+			l.wg.Done()
+			return
+		}
+		data, peer, err := l.transport.ReadPacket()
 		if err != nil {
-			logWarn(p, rec, err, "error parsing record")
-			l.RemovePeer(p, AlertDesc_DecodeError)
-			break
+			logError(nil, nil, err, "failed to read packet")
+			l.wg.Done()
+			return
 		}
 
-		if rec.IsHandshake() {
-			logDebug(p, rec, "handshake received")
-			if err := p.session.processHandshakePacket(rec); err != nil {
-				l.RemovePeer(p, AlertDesc_HandshakeFailure)
-				logWarn(p, rec, err, "failed to complete handshake")
-			}
-		} else if rec.IsAlert() {
-			//handle alert
-			alert, err := parseAlert(rec.Data)
-			if err != nil {
-				l.RemovePeer(p, AlertDesc_DecodeError)
-				logWarn(p, rec, err, "failed to parse alert")
-			}
-			if alert.Type == AlertType_Warning {
-				logWarn(p, nil, nil, "received warning alert: %s", alertDescToString(alert.Desc))
-			} else {
-				l.RemovePeer(p, AlertDesc_Noop)
-				logWarn(p, nil, nil, "received fatal alert: %s", alertDescToString(alert.Desc))
-			}
-		} else if rec.IsAppData() && !p.session.isHandshakeDone() {
-			l.RemovePeer(p, AlertDesc_DecryptError)
-			logWarn(p, nil, nil, "received app data message without completing handshake")
+		l.mux.Lock()
+		p, found := l.peers[peer.String()]
+
+		if !found {
+			//this is where server code will go
+			p, _ = l.addServerPeer(peer)
+			logDebug(p, nil, "received from unknown endpoint")
 		} else {
-			if p.queue != nil {
-				p.queue <- rec.Data
-			} else {
-				l.readQueue <- &msg{rec.Data, p}
-			}
-			//TODO handle case where queue is full and not being read
+			logDebug(p, nil, "received from endpoint")
 		}
-		if rem == nil || len(rem) == 0 {
-			break
+		l.mux.Unlock()
+
+		p.Lock()
+		select {
+		case p.transportQueue <- data:
+		default:
+			logWarn(p, nil, nil, "transport queue full")
+		}
+		if !p.processor {
+			l.wg.Add(1)
+			logDebug(p, nil, "started processor")
+			p.processor = true
+			go processor(l, p)
 		} else {
-			data = rem
+			logDebug(p, nil, "processor already running")
+		}
+		p.Unlock()
+	}
+}
+
+func processor(l *Listener, p *Peer) {
+	for {
+		select {
+		case data := <-p.transportQueue:
+			for {
+				rec, rem, err := p.session.parseRecord(data)
+				if err != nil {
+					logWarn(p, rec, err, "error parsing record")
+					l.RemovePeer(p, AlertDesc_DecodeError)
+					break
+				}
+
+				if rec.IsHandshake() {
+					logDebug(p, rec, "handshake received")
+					if err := p.session.processHandshakePacket(rec); err != nil {
+						l.RemovePeer(p, AlertDesc_HandshakeFailure)
+						logWarn(p, rec, err, "failed to complete handshake")
+					}
+				} else if rec.IsAlert() {
+					//handle alert
+					alert, err := parseAlert(rec.Data)
+					if err != nil {
+						l.RemovePeer(p, AlertDesc_DecodeError)
+						logWarn(p, rec, err, "failed to parse alert")
+					}
+					if alert.Type == AlertType_Warning {
+						logWarn(p, nil, nil, "received warning alert: %s", alertDescToString(alert.Desc))
+					} else {
+						l.RemovePeer(p, AlertDesc_Noop)
+						logWarn(p, nil, nil, "received fatal alert: %s", alertDescToString(alert.Desc))
+					}
+				} else if rec.IsAppData() && !p.session.isHandshakeDone() {
+					l.RemovePeer(p, AlertDesc_DecryptError)
+					logWarn(p, nil, nil, "received app data message without completing handshake")
+				} else {
+					if p.queue != nil {
+						p.queue <- rec.Data
+					} else {
+						l.readQueue <- &msg{rec.Data, p}
+					}
+					//TODO handle case where queue is full and not being read
+				}
+				if rem == nil || len(rem) == 0 {
+					break
+				} else {
+					data = rem
+				}
+			}
+		default:
+			l.wg.Done()
+			p.Lock()
+			if len(p.transportQueue) == 0 {
+				logDebug(p, nil, "stopped processor")
+				p.processor = false
+				p.Unlock()
+				return
+			} else {
+				p.Unlock()
+			}
 		}
 	}
-
-	p.Unlock()
-
-	l.wg.Done()
-	//TODO need to queue records for each session so that we can process multiple in parallel
 }
 
 func sweeper(l *Listener) {
@@ -191,7 +217,7 @@ func (l *Listener) RemovePeerByAddr(addr string, alertDesc uint8) {
 }
 
 func (l *Listener) addServerPeer(tpeer TransportEndpoint) (*Peer, error) {
-	peer := &Peer{transport: tpeer}
+	peer := &Peer{transport: tpeer, activity: time.Now(), transportQueue: make(chan []byte, 128)}
 	peer.session = newServerSession(peer)
 	peer.session.listener = l
 
@@ -221,7 +247,7 @@ func (l *Listener) AddPeer(addr string, identity []byte) (*Peer, error) {
 }
 
 func (l *Listener) AddPeerWithParams(params *PeerParams) (*Peer, error) {
-	peer := &Peer{transport: l.transport.NewEndpoint(params.Addr), activity: time.Now()}
+	peer := &Peer{transport: l.transport.NewEndpoint(params.Addr), activity: time.Now(), transportQueue: make(chan []byte, 128)}
 	peer.UseQueue(true)
 	peer.session = newClientSession(peer)
 	peer.name = peer.RemoteAddr()
@@ -305,4 +331,11 @@ func (l *Listener) EachPeer(callback func(peer *Peer)) {
 		callback(peer)
 	}
 	l.mux.Unlock()
+}
+
+func (l *Listener) LocalAddr() string {
+	if l.transport == nil {
+		return ""
+	}
+	return l.transport.Local()
 }
