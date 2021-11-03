@@ -66,12 +66,15 @@ func receiver(l *Listener) {
 			l.wg.Done()
 			return
 		}
+		if data == nil {
+			// handles case of a soft-failure on read.
+			continue
+		}
 
 		l.mux.Lock()
 		p, found := l.peers[peer.String()]
 
 		if !found {
-			//this is where server code will go
 			p, _ = l.addServerPeer(peer)
 			logDebug(p, nil, "received from unknown endpoint")
 		} else {
@@ -87,11 +90,8 @@ func receiver(l *Listener) {
 		}
 		if !p.processor {
 			l.wg.Add(1)
-			logDebug(p, nil, "started processor")
 			p.processor = true
 			go processor(l, p)
-		} else {
-			logDebug(p, nil, "processor already running")
 		}
 		p.Unlock()
 	}
@@ -146,12 +146,11 @@ func processor(l *Listener, p *Peer) {
 				}
 			}
 		default:
-			l.wg.Done()
 			p.Lock()
 			if len(p.transportQueue) == 0 {
-				logDebug(p, nil, "stopped processor")
 				p.processor = false
 				p.Unlock()
+				l.wg.Done()
 				return
 			} else {
 				p.Unlock()

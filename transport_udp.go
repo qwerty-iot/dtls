@@ -5,6 +5,7 @@
 package dtls
 
 import (
+	"fmt"
 	"net"
 	"time"
 )
@@ -51,18 +52,21 @@ func (u *udpTransport) Shutdown() error {
 }
 
 func (u *udpTransport) ReadPacket() ([]byte, TransportEndpoint, error) {
-	buffer := make([]byte, 32768)
+	buffer := make([]byte, 16384)
 
 	//TODO add timeout support
 
-	for {
-		length, from, err := u.socket.ReadFromUDP(buffer)
-		if err != nil {
-			logError(nil, nil, err, "failed to receive packet")
-			return nil, nil, err
-		}
-		return buffer[:length], &udpEndpoint{addr: from, handle: u}, nil
+	length, from, err := u.socket.ReadFromUDP(buffer)
+	if err != nil {
+		logError(nil, nil, err, "failed to receive packet")
+		return nil, nil, err
 	}
+	if length > 16384 {
+		err = fmt.Errorf("packet size %d>16384", length)
+		logError(nil, nil, err, "packet too large")
+		return nil, nil, nil
+	}
+	return buffer[:length], &udpEndpoint{addr: from, handle: u}, nil
 }
 
 func (p *udpEndpoint) WritePacket(data []byte) error {
