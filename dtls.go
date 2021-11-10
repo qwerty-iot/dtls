@@ -166,14 +166,20 @@ func sweeper(l *Listener) {
 			return
 		}
 		expiry := time.Now().Add(SessionInactivityTimeout * -1)
+		var removeList []*Peer
+		l.mux.Lock()
 		for _, peer := range l.peers {
 			if peer.activity.Before(expiry) {
-				logDebug(peer, nil, "sweeper removing peer")
-				if SessionExportCallback != nil {
-					SessionExportCallback(peer)
-				}
-				l.RemovePeer(peer, AlertDesc_Noop)
+				removeList = append(removeList, peer)
 			}
+		}
+		l.mux.Unlock()
+		for _, peer := range removeList {
+			logDebug(peer, nil, "sweeper removing peer")
+			if SessionExportCallback != nil {
+				SessionExportCallback(peer)
+			}
+			l.RemovePeer(peer, AlertDesc_Noop)
 		}
 		time.Sleep(time.Minute)
 	}
