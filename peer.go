@@ -77,6 +77,12 @@ func (p *Peer) LastActivity() time.Time {
 	return p.activity
 }
 
+func (p *Peer) touch() time.Time {
+	prev := p.activity
+	p.activity = time.Now()
+	return prev
+}
+
 func (p *Peer) Close(alertDesc uint8) {
 	rec := newRecord(ContentType_Alert, p.session.getEpoch(), p.session.getNextSequence(), newAlert(AlertType_Fatal, alertDesc).Bytes())
 	p.activity = time.Now()

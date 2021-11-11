@@ -78,7 +78,8 @@ func receiver(l *Listener) {
 			p, _ = l.addServerPeer(peer)
 			logDebug(p, nil, "received from unknown endpoint")
 		} else {
-			logDebug(p, nil, "received from endpoint")
+			prev := p.touch()
+			logDebug(p, nil, "received from endpoint (last seen: %s ago)", p.LastActivity().Sub(prev).String())
 		}
 		l.mux.Unlock()
 
@@ -110,7 +111,6 @@ func processor(l *Listener, p *Peer) {
 				}
 
 				if rec.IsHandshake() {
-					logDebug(p, rec, "handshake received")
 					if err := p.session.processHandshakePacket(rec); err != nil {
 						l.RemovePeer(p, AlertDesc_HandshakeFailure)
 						logWarn(p, rec, err, "failed to complete handshake")

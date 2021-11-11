@@ -18,6 +18,12 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 
 	rec, rem, err := parseRecord(data)
 	if err != nil {
+		if len(data) > 64 {
+			logDebug(s.peer, nil, "dtls: bad packet: [%X](%d)", data[:64], len(data))
+		} else {
+			logDebug(s.peer, nil, "dtls: bad packet: [%X]", data)
+		}
+
 		logWarn(s.peer, nil, err, "dtls: parse record")
 		return nil, nil, err
 	}
@@ -135,7 +141,9 @@ func (s *session) writeHandshake(hs *handshake) error {
 		for idx := 0; idx < dataLen/s.listener.maxHandshakeSize+1; idx++ {
 			data = hs.FragmentBytes(idx*s.listener.maxHandshakeSize, s.listener.maxHandshakeSize)
 			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
-			logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
+			if DebugHandshake {
+				logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
+			}
 			err := s.writeRecord(rec)
 			if err != nil {
 				return err
@@ -145,7 +153,9 @@ func (s *session) writeHandshake(hs *handshake) error {
 	} else {
 		rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
 
-		logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
+		if DebugHandshake {
+			logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
+		}
 
 		return s.writeRecord(rec)
 	}
@@ -168,13 +178,17 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 			for idx := 0; idx < dataLen/s.listener.maxHandshakeSize+1; idx++ {
 				data = hs.FragmentBytes(idx*s.listener.maxHandshakeSize, s.listener.maxHandshakeSize)
 				rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
-				logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
+				if DebugHandshake {
+					logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
+				}
 				recs = append(recs, rec)
 			}
 		} else {
 			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
 
-			logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
+			if DebugHandshake {
+				logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
+			}
 
 			recs = append(recs, rec)
 		}
@@ -266,9 +280,9 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 	var err error
 
 	if s.handshake != nil {
-		logDebug(s.peer, rspRec, "processing packet, current state: %s", s.handshake.state)
+		logDebug(s.peer, rspRec, "processing handshake packet, current state: %s", s.handshake.state)
 	} else {
-		logDebug(s.peer, rspRec, "processing packet, current state: nil")
+		logDebug(s.peer, rspRec, "processing handshake packet, current state: nil")
 	}
 
 	switch rspRec.ContentType {
