@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+var MaxPacketSize = 16384
+
 type udpEndpoint struct {
 	addr   *net.UDPAddr
 	handle *udpTransport
@@ -52,7 +54,7 @@ func (u *udpTransport) Shutdown() error {
 }
 
 func (u *udpTransport) ReadPacket() ([]byte, TransportEndpoint, error) {
-	buffer := make([]byte, 16384)
+	buffer := make([]byte, MaxPacketSize)
 
 	//TODO add timeout support
 
@@ -61,8 +63,8 @@ func (u *udpTransport) ReadPacket() ([]byte, TransportEndpoint, error) {
 		logError(nil, nil, err, "failed to receive packet")
 		return nil, nil, err
 	}
-	if length > 16384 {
-		err = fmt.Errorf("packet size %d>16384", length)
+	if length > MaxPacketSize {
+		err = fmt.Errorf("packet size %d>%d", length, MaxPacketSize)
 		logError(nil, nil, err, "packet too large")
 		return nil, nil, nil
 	}
