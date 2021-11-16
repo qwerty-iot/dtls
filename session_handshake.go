@@ -317,6 +317,11 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				s.started = time.Now()
 				s.handshake.state = "recv-clienthello-initial"
 			} else {
+				if s.handshake == nil || s.handshake.cookie == nil {
+					s.handshake.state = "failed"
+					err = errors.New("dtls: clienthello sent cookie, but we have nothing to compare against")
+					break
+				}
 				if !reflect.DeepEqual(cookie, s.handshake.cookie) {
 					s.handshake.state = "failed"
 					err = errors.New("dtls: cookie in clienthello does not match")
