@@ -310,6 +310,9 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 		case handshakeType_ClientHello:
 			cookie := rspHs.ClientHello.GetCookie()
 			if len(cookie) == 0 {
+				if s.handshake != nil && len(s.handshake.state) != 0 {
+					logWarn(s.peer, rspRec, nil, "previous handshake not completed, last state: %s", s.handshake.state)
+				}
 				s.reset()
 				s.generateCookie()
 				s.sequenceNumber = uint64(rspHs.Header.Sequence)

@@ -56,7 +56,11 @@ type handshake struct {
 }
 
 func (h *handshake) Print() string {
-	return fmt.Sprintf("%s ||| %s", h.Header.Print(), h.Payload.Print())
+	if h.Payload == nil {
+		return fmt.Sprintf("%s ||| nil", h.Header.Print())
+	} else {
+		return fmt.Sprintf("%s ||| %s", h.Header.Print(), h.Payload.Print())
+	}
 }
 
 func (h *handshake) Bytes() []byte {
