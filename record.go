@@ -47,7 +47,7 @@ func parseRecord(raw []byte) (*record, []byte, error) {
 	r.Sequence = i64 & 0x0000ffffffffffff
 	r.Length = binary.BigEndian.Uint16(raw[11:])
 
-	if r.Version != DtlsVersion12 {
+	if r.Version != DtlsVersion12 && r.Version != DtlsVersion10 {
 		return nil, nil, errors.New("dtls version not supported")
 	}
 

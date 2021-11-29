@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	DtlsVersion10 uint16 = 0xFEFF
 	DtlsVersion12 uint16 = 0xFEFD
 )
 
