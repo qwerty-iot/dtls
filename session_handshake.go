@@ -306,6 +306,14 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			return nil
 		}
 
+		if _, found := s.handshake.dedup[rspHs.Header.Sequence]; found && rspHs.Header.Sequence != 0 {
+			// duplicate packet received, drop it.
+			logDebug(s.peer, rspRec, "duplicate handshake received seq: %d", rspHs.Header.Sequence)
+			return nil
+		} else {
+			s.handshake.dedup[rspHs.Header.Sequence] = true
+		}
+
 		switch rspHs.Header.HandshakeType {
 		case handshakeType_ClientHello:
 			cookie := rspHs.ClientHello.GetCookie()

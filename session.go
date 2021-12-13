@@ -50,6 +50,7 @@ type sessionHandshake struct {
 	masterSecret []byte
 	verifySum    []byte
 	firstDecrypt bool
+	dedup        map[uint16]bool
 	done         chan error
 	client       struct {
 		RandomTime time.Time
@@ -62,7 +63,7 @@ type sessionHandshake struct {
 }
 
 func newSessionHandshake(ts time.Time) *sessionHandshake {
-	sh := sessionHandshake{hash: sha256.New(), done: make(chan error)}
+	sh := sessionHandshake{hash: sha256.New(), done: make(chan error), dedup: map[uint16]bool{}}
 	sh.client.RandomTime = ts
 	sh.server.RandomTime = ts
 
