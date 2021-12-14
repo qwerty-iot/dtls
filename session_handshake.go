@@ -94,6 +94,16 @@ func (s *session) parseHandshake(rec *record) (*handshake, error) {
 		return nil, err
 	}
 
+	if s.handshake != nil {
+		if _, found := s.handshake.dedup[hs.Header.Sequence]; found && hs.Header.Sequence != 0 {
+			// duplicate packet received, drop it.
+			hs.Header.duplicate = true
+			return hs, nil
+		} else {
+			s.handshake.dedup[hs.Header.Sequence] = true
+		}
+	}
+
 	if hs.IsFragment() {
 		// save fragment && restore fragment
 		if oldFragment, loaded := sessionHandshakeFragments.LoadOrStore(s.Id, hs.Fragment); loaded {
@@ -117,7 +127,6 @@ func (s *session) parseHandshake(rec *record) (*handshake, error) {
 		} else {
 			return hs, nil
 		}
-
 	} else {
 		s.updateHash(rec.Data)
 	}
@@ -305,15 +314,9 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			logDebug(s.peer, rspRec, "handshake fragment received %d/%d", rspHs.Header.FragmentOfs+rspHs.Header.FragmentLen, rspHs.Header.Length)
 			return nil
 		}
-
-		if s.handshake != nil {
-			if _, found := s.handshake.dedup[rspHs.Header.Sequence]; found && rspHs.Header.Sequence != 0 {
-				// duplicate packet received, drop it.
-				logDebug(s.peer, rspRec, "duplicate handshake received seq: %d", rspHs.Header.Sequence)
-				return nil
-			} else {
-				s.handshake.dedup[rspHs.Header.Sequence] = true
-			}
+		if rspHs.IsDuplicate() {
+			logDebug(s.peer, rspRec, "duplicate handshake received seq: %d", rspHs.Header.Sequence)
+			return nil
 		}
 
 		switch rspHs.Header.HandshakeType {

@@ -94,6 +94,10 @@ func (h *handshake) IsFragment() bool {
 	return len(h.Fragment) != 0
 }
 
+func (h *handshake) IsDuplicate() bool {
+	return h.Header.duplicate
+}
+
 func newHandshake(handshakeType handshakeType) *handshake {
 	hs := &handshake{}
 	hs.Header.HandshakeType = handshakeType

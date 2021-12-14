@@ -14,6 +14,7 @@ type header struct {
 	Sequence      uint16
 	FragmentOfs   uint32
 	FragmentLen   uint32
+	duplicate     bool
 }
 
 func (h *header) Parse(rdr *byteReader) {
