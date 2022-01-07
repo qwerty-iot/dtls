@@ -22,7 +22,8 @@ type SessionStore struct {
 	Type                string      `json:"type"`
 	RemoteAddr          string      `json:"remoteAddr"`
 	Epoch               uint16      `json:"epoch"`
-	SequenceNumber      uint64      `json:"sequenceNumber"`
+	SequenceNumber0     uint64      `json:"sequenceNumber0"`
+	SequenceNumber1     uint64      `json:"sequenceNumber1"`
 	KeyBlock            *KeyBlock   `json:"KeyBlock"`
 	SelectedCipherSuite CipherSuite `json:"selectedCipherSuite"`
 }
@@ -38,7 +39,8 @@ func (s *session) export() string {
 		Type:                s.Type,
 		RemoteAddr:          s.peer.RemoteAddr(),
 		Epoch:               s.epoch,
-		SequenceNumber:      s.sequenceNumber,
+		SequenceNumber0:     s.sequenceNumber0,
+		SequenceNumber1:     s.sequenceNumber1,
 		KeyBlock:            s.keyBlock,
 		SelectedCipherSuite: s.selectedCipherSuite,
 	}
@@ -83,12 +85,11 @@ func (s *session) restore(raw string) {
 	s.Id = ss.Id
 	s.Type = ss.Type
 	s.epoch = ss.Epoch
-	s.sequenceNumber = ss.SequenceNumber
+	s.sequenceNumber0 = ss.SequenceNumber0
+	s.sequenceNumber1 = ss.SequenceNumber1
 	s.keyBlock = ss.KeyBlock
 	s.selectedCipherSuite = ss.SelectedCipherSuite
 	s.cipher = getCipher(s.peer, s.selectedCipherSuite)
-	s.encrypt = true
-	s.decrypt = true
 	s.handshake.state = "finished"
 	return
 }

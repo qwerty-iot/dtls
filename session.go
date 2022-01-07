@@ -26,13 +26,12 @@ type session struct {
 	peerCert            *x509.Certificate
 	peerPublicKey       []byte
 	epoch               uint16
-	sequenceNumber      uint64
+	sequenceNumber0     uint64
+	sequenceNumber1     uint64
 	keyBlock            *KeyBlock
 	handshake           *sessionHandshake
 	cipher              Cipher
 	selectedCipherSuite CipherSuite
-	encrypt             bool
-	decrypt             bool
 }
 
 type sessionHandshake struct {
@@ -51,6 +50,7 @@ type sessionHandshake struct {
 	verifySum    []byte
 	firstDecrypt bool
 	dedup        map[uint16]bool
+	dedupCache   map[uint16][]*record
 	done         chan error
 	client       struct {
 		RandomTime time.Time
@@ -60,10 +60,11 @@ type sessionHandshake struct {
 		RandomTime time.Time
 		Random     []byte
 	}
+	lastSeqRecv uint16
 }
 
 func newSessionHandshake(ts time.Time) *sessionHandshake {
-	sh := sessionHandshake{hash: sha256.New(), done: make(chan error), dedup: map[uint16]bool{}}
+	sh := sessionHandshake{hash: sha256.New(), done: make(chan error), dedup: map[uint16]bool{}, dedupCache: map[uint16][]*record{}}
 	sh.client.RandomTime = ts
 	sh.server.RandomTime = ts
 
@@ -101,10 +102,9 @@ func (s *session) reset() {
 	if DebugHandshakeHash {
 		logDebug(s.peer, nil, "reset session state")
 	}
-	s.decrypt = false
-	s.encrypt = false
 	s.epoch = 0
-	s.sequenceNumber = 0
+	s.sequenceNumber0 = 0
+	s.sequenceNumber1 = 0
 	s.handshake = newSessionHandshake(time.Now())
 }
 
@@ -129,19 +129,30 @@ func (s *session) getEpoch() uint16 {
 
 func (s *session) incEpoch() {
 	s.epoch += uint16(1)
-	s.sequenceNumber = 0
+	s.sequenceNumber1 = 0
 	return
 }
 
 func (s *session) getNextSequence() uint64 {
-	seq := s.sequenceNumber
-	s.sequenceNumber += 1
-	return seq
+	if s.epoch == 0 {
+		seq := s.sequenceNumber0
+		s.sequenceNumber0 += 1
+		return seq
+	} else {
+		seq := s.sequenceNumber1
+		s.sequenceNumber1 += 1
+		return seq
+	}
 }
 
 func (s *session) getSequence() uint64 {
-	seq := s.sequenceNumber
-	return seq
+	if s.epoch == 0 {
+		seq := s.sequenceNumber0
+		return seq
+	} else {
+		seq := s.sequenceNumber1
+		return seq
+	}
 }
 
 func (s *session) initKeyBlock() {

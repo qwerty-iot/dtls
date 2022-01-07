@@ -28,9 +28,7 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		return nil, nil, err
 	}
 
-	if s.decrypt && rec.IsHandshake() && rec.Epoch == 0 {
-		logDebug(s.peer, nil, "read handshake out of sequence %s (rem:%d) (decrypted:%t)", rec.Print(), len(rem), false)
-	} else if s.decrypt {
+	if rec.Epoch != 0 {
 		if s.keyBlock == nil {
 			err = errors.New("dtls: key block not initialized")
 			logWarn(s.peer, rec, err, "tried to decrypt but KeyBlock not initialized.")
@@ -80,7 +78,7 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		}
 
 		rec.SetData(clearText)
-		logDebug(s.peer, rec, "read %s (rem:%d) (decrypted:%t)", rec.Print(), len(rem), s.decrypt)
+		logDebug(s.peer, rec, "read %s (rem:%d)", rec.Print(), len(rem))
 	}
 
 	return rec, rem, nil
@@ -96,8 +94,9 @@ func (s *session) parseHandshake(rec *record) (*handshake, error) {
 
 	if s.handshake != nil {
 		if _, found := s.handshake.dedup[hs.Header.Sequence]; found && hs.Header.Sequence != 0 {
-			// duplicate packet received, drop it.
+			// dupilicate packet received, drop it.
 			hs.Header.duplicate = true
+			s.cacheHandshakeFlush(hs.Header.Sequence)
 			return hs, nil
 		} else {
 			s.handshake.dedup[hs.Header.Sequence] = true
@@ -153,6 +152,8 @@ func (s *session) writeHandshake(hs *handshake) error {
 			if DebugHandshake {
 				logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
 			}
+
+			s.cacheHandshake(rec)
 			err := s.writeRecord(rec)
 			if err != nil {
 				return err
@@ -166,7 +167,9 @@ func (s *session) writeHandshake(hs *handshake) error {
 			logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
 		}
 
-		return s.writeRecord(rec)
+		s.cacheHandshake(rec)
+		err := s.writeRecord(rec)
+		return err
 	}
 }
 
@@ -190,6 +193,7 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 				if DebugHandshake {
 					logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
 				}
+				s.cacheHandshake(rec)
 				recs = append(recs, rec)
 			}
 		} else {
@@ -198,15 +202,50 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 			if DebugHandshake {
 				logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
 			}
-
+			s.cacheHandshake(rec)
 			recs = append(recs, rec)
 		}
 	}
 	return s.writeRecords(recs)
 }
 
+func (s *session) cacheHandshakeFlush(seq uint16) {
+
+	if recArr, found := s.handshake.dedupCache[seq]; found {
+		for _, rec := range recArr {
+			if rec.ContentType == ContentType_ChangeCipherSpec {
+				s.epoch = 0
+				s.sequenceNumber1 = 0
+			}
+			rec.Epoch = s.getEpoch()
+			rec.Sequence = s.getNextSequence()
+			if rec.ContentType == ContentType_ChangeCipherSpec {
+				s.incEpoch()
+			}
+		}
+		err := s.writeRecords(recArr)
+		if err != nil {
+			logWarn(s.peer, nil, err, "retransmit write")
+		} else if DebugHandshake {
+			logDebug(s.peer, nil, "retransmit (handshake)")
+		}
+	}
+}
+
+func (s *session) cacheHandshake(rec *record) {
+	if DebugHandshake {
+		logDebug(s.peer, rec, "storing handshake for retransmit")
+	}
+	if recArr, found := s.handshake.dedupCache[s.handshake.lastSeqRecv]; found {
+		recArr = append(recArr, rec)
+		s.handshake.dedupCache[s.handshake.lastSeqRecv] = recArr
+	} else {
+		s.handshake.dedupCache[s.handshake.lastSeqRecv] = []*record{rec}
+	}
+}
+
 func (s *session) writeRecord(rec *record) error {
-	if s.encrypt {
+	if rec.Epoch != 0 {
 		var iv []byte
 		var key []byte
 		var mac []byte
@@ -233,23 +272,38 @@ func (s *session) writeRecord(rec *record) error {
 }
 
 func (s *session) writeRecords(recs []*record) error {
-	if s.encrypt {
-		return errors.New("dtls: can't write multiple encrypted records.")
-	} else {
-		buf := bytes.Buffer{}
-		for _, rec := range recs {
-			logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
-			nextRec := rec.Bytes()
-			if len(nextRec)+buf.Len() > s.listener.maxPacketSize {
-				if err := s.peer.transport.WritePacket(buf.Bytes()); err != nil {
-					return err
-				}
-				buf.Reset()
+	buf := bytes.Buffer{}
+	for _, rec := range recs {
+		if rec.Epoch != 0 {
+			var iv []byte
+			var key []byte
+			var mac []byte
+			if s.Type == SessionType_Client {
+				iv = s.keyBlock.ClientIV
+				key = s.keyBlock.ClientWriteKey
+				mac = s.keyBlock.ClientMac
+			} else {
+				iv = s.keyBlock.ServerIV
+				key = s.keyBlock.ServerWriteKey
+				mac = s.keyBlock.ServerMac
 			}
-			buf.Write(nextRec)
+			cipherText, err := s.cipher.Encrypt(rec, key, iv, mac)
+			if err != nil {
+				return err
+			}
+			rec.SetData(cipherText)
 		}
-		return s.peer.transport.WritePacket(buf.Bytes())
+		logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
+		nextRec := rec.Bytes()
+		if len(nextRec)+buf.Len() > s.listener.maxPacketSize {
+			if err := s.peer.transport.WritePacket(buf.Bytes()); err != nil {
+				return err
+			}
+			buf.Reset()
+		}
+		buf.Write(nextRec)
 	}
+	return s.peer.transport.WritePacket(buf.Bytes())
 }
 
 func (s *session) generateCookie() {
@@ -283,53 +337,50 @@ func (s *session) waitForHandshake(timeout time.Duration) error {
 	}
 }
 
-func (s *session) processHandshakePacket(rspRec *record) error {
+func (s *session) processHandshakePacket(incomingRec *record) error {
 
-	var reqHs, rspHs *handshake
+	var outgoingHs, incomingHs *handshake
 	var err error
 
 	if s.handshake != nil {
-		logDebug(s.peer, rspRec, "processing handshake packet, current state: %s", s.handshake.state)
+		logDebug(s.peer, incomingRec, "processing handshake packet, current state: %s", s.handshake.state)
 	} else {
-		logDebug(s.peer, rspRec, "processing handshake packet, current state: nil")
+		logDebug(s.peer, incomingRec, "processing handshake packet, current state: nil")
 	}
 
-	switch rspRec.ContentType {
+	switch incomingRec.ContentType {
 	case ContentType_Handshake:
 
-		if s.isHandshakeDone() && (rspRec.Epoch != 0 || rspRec.Data[0] != byte(handshakeType_ClientHello)) {
-			logDebug(s.peer, rspRec, "handshake packet received after handshake is complete")
-			return nil
-		}
-		if !s.isHandshakeDone() && rspRec.Epoch != 0 && !s.decrypt {
-			logDebug(s.peer, rspRec, "encrypted handshake packet received, but cipher not initialized")
-			return nil
-		}
-
-		rspHs, err = s.parseHandshake(rspRec)
+		incomingHs, err = s.parseHandshake(incomingRec)
 		if err != nil {
 			return err
 		}
-		if rspHs.IsFragment() {
-			logDebug(s.peer, rspRec, "handshake fragment received %d/%d", rspHs.Header.FragmentOfs+rspHs.Header.FragmentLen, rspHs.Header.Length)
-			return nil
-		}
-		if rspHs.IsDuplicate() {
-			logDebug(s.peer, rspRec, "duplicate handshake received seq: %d", rspHs.Header.Sequence)
+		if incomingHs.IsFragment() {
+			logDebug(s.peer, incomingRec, "handshake fragment received %d/%d", incomingHs.Header.FragmentOfs+incomingHs.Header.FragmentLen, incomingHs.Header.Length)
 			return nil
 		}
 
-		switch rspHs.Header.HandshakeType {
+		if incomingHs.IsDuplicate() && incomingRec.Data[0] != byte(handshakeType_ClientHello) {
+			logDebug(s.peer, incomingRec, "duplicate handshake received seq: %d", incomingHs.Header.Sequence)
+			return nil
+		}
+
+		if s.isHandshakeDone() && (incomingRec.Epoch != 0 || incomingRec.Data[0] != byte(handshakeType_ClientHello)) {
+			logDebug(s.peer, incomingRec, "handshake packet received after handshake is complete")
+			return nil
+		}
+
+		s.handshake.lastSeqRecv = incomingHs.Header.Sequence
+
+		switch incomingHs.Header.HandshakeType {
 		case handshakeType_ClientHello:
-			cookie := rspHs.ClientHello.GetCookie()
+			cookie := incomingHs.ClientHello.GetCookie()
 			if len(cookie) == 0 {
 				if s.handshake != nil && len(s.handshake.state) != 0 {
-					logWarn(s.peer, rspRec, nil, "previous handshake not completed, last state: %s", s.handshake.state)
+					logWarn(s.peer, incomingRec, nil, "previous handshake not completed, last state: %s", s.handshake.state)
 				}
 				s.reset()
 				s.generateCookie()
-				s.sequenceNumber = uint64(rspHs.Header.Sequence)
-				s.handshake.seq = rspHs.Header.Sequence
 				s.started = time.Now()
 				s.handshake.state = "recv-clienthello-initial"
 			} else {
@@ -344,8 +395,8 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 					break
 				}
 
-				s.handshake.client.RandomTime, s.handshake.client.Random = rspHs.ClientHello.GetRandom()
-				s.selectedCipherSuite = rspHs.ClientHello.SelectCipherSuite(s.listener.cipherSuites)
+				s.handshake.client.RandomTime, s.handshake.client.Random = incomingHs.ClientHello.GetRandom()
+				s.selectedCipherSuite = incomingHs.ClientHello.SelectCipherSuite(s.listener.cipherSuites)
 				s.cipher = getCipher(s.peer, s.selectedCipherSuite)
 				if s.cipher == nil {
 					s.handshake.state = "failed"
@@ -353,15 +404,15 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 					break
 				}
 
-				if rspHs.ClientHello.HasSessionId() {
+				if incomingHs.ClientHello.HasSessionId() {
 					//resuming a session
-					ce := getFromSessionCache(rspHs.ClientHello.GetSessionIdStr())
+					ce := getFromSessionCache(incomingHs.ClientHello.GetSessionIdStr())
 					if ce != nil {
-						s.Id = rspHs.ClientHello.GetSessionId()
+						s.Id = incomingHs.ClientHello.GetSessionId()
 						if s.selectedCipherSuite.NeedPsk() {
 							s.peerIdentity = ce.Identity
 
-							logDebug(s.peer, rspRec, "resuming previously established session, set identity: %s", s.peerIdentity)
+							logDebug(s.peer, incomingRec, "resuming previously established session, set identity: %s", s.peerIdentity)
 
 							psk := GetPskFromKeystore(s.peerIdentity, s.peer.RemoteAddr())
 							if psk == nil {
@@ -379,11 +430,11 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 							s.handshake.eccKeypair = ce.EccKeypair
 							s.handshake.masterSecret = ce.MasterSecret
 
-							logDebug(s.peer, rspRec, "resuming previously established session, set certificate")
+							logDebug(s.peer, incomingRec, "resuming previously established session, set certificate")
 							s.handshake.resumed = true
 						}
 					} else {
-						logDebug(s.peer, rspRec, "tried to resume session, but it was not found")
+						logDebug(s.peer, incomingRec, "tried to resume session, but it was not found")
 						s.handshake.resumed = false
 					}
 				}
@@ -395,14 +446,14 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				}
 			}
 		case handshakeType_ServerHello:
-			s.handshake.server.RandomTime, s.handshake.server.Random = rspHs.ServerHello.GetRandom()
-			if reflect.DeepEqual(s.Id, rspHs.ServerHello.GetSessionId()) {
+			s.handshake.server.RandomTime, s.handshake.server.Random = incomingHs.ServerHello.GetRandom()
+			if reflect.DeepEqual(s.Id, incomingHs.ServerHello.GetSessionId()) {
 				//resuming session
 				s.handshake.resumed = true
 			} else {
-				s.Id = rspHs.ServerHello.GetSessionId()
+				s.Id = incomingHs.ServerHello.GetSessionId()
 			}
-			s.selectedCipherSuite = rspHs.ServerHello.cipherSuite
+			s.selectedCipherSuite = incomingHs.ServerHello.cipherSuite
 			s.cipher = getCipher(s.peer, s.selectedCipherSuite)
 			if s.cipher == nil {
 				s.handshake.state = "failed"
@@ -412,7 +463,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			s.handshake.state = "recv-serverhello"
 		case handshakeType_HelloVerifyRequest:
 			if len(s.handshake.cookie) == 0 {
-				s.handshake.cookie = rspHs.HelloVerifyRequest.GetCookie()
+				s.handshake.cookie = incomingHs.HelloVerifyRequest.GetCookie()
 				s.resetHash()
 				s.handshake.state = "recv-helloverifyrequest"
 			} else {
@@ -422,25 +473,25 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			}
 			s.handshake.state = "recv-helloverifyrequest"
 		case handshakeType_Certificate:
-			s.handshake.certs = rspHs.Certificate.GetCerts()
+			s.handshake.certs = incomingHs.Certificate.GetCerts()
 			s.handshake.state = "recv-certificate"
 		case handshakeType_ServerKeyExchange:
-			s.peerIdentity = rspHs.ServerKeyExchange.GetIdentity()
-			s.peerPublicKey = rspHs.ServerKeyExchange.GetPublicKey()
+			s.peerIdentity = incomingHs.ServerKeyExchange.GetIdentity()
+			s.peerPublicKey = incomingHs.ServerKeyExchange.GetPublicKey()
 			s.handshake.state = "recv-serverkeyexchange"
 		case handshakeType_ServerHelloDone:
 			s.handshake.state = "recv-serverhellodone"
 		case handshakeType_CertificateVerify:
-			err = eccVerifySignature(s.handshake.verifySum, rspHs.CertificateVerify.signature, s.handshake.certs)
+			err = eccVerifySignature(s.handshake.verifySum, incomingHs.CertificateVerify.signature, s.handshake.certs)
 			if err != nil {
-				logWarn(s.peer, rspRec, err, "certificate verification failed")
+				logWarn(s.peer, incomingRec, err, "certificate verification failed")
 				break
 			}
-			logDebug(s.peer, rspRec, "certificate verified")
+			logDebug(s.peer, incomingRec, "certificate verified")
 			s.handshake.state = "recv-certificateverify"
 		case handshakeType_ClientKeyExchange:
 			if s.selectedCipherSuite.NeedPsk() {
-				s.peerIdentity = rspHs.ClientKeyExchange.GetIdentity()
+				s.peerIdentity = incomingHs.ClientKeyExchange.GetIdentity()
 				psk := GetPskFromKeystore(s.peerIdentity, s.peer.RemoteAddr())
 				if psk == nil {
 					err = errors.New("dtls: no valid psk for identity")
@@ -448,7 +499,7 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				}
 				s.handshake.psk = psk
 			} else {
-				s.peerPublicKey = rspHs.ClientKeyExchange.GetPublicKey()
+				s.peerPublicKey = incomingHs.ClientKeyExchange.GetPublicKey()
 				if s.handshake.certs != nil && len(s.handshake.certs) > 0 {
 					if ValidateCertificateCallback != nil {
 						cert, err := x509.ParseCertificate(s.handshake.certs[0])
@@ -486,11 +537,11 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			} else {
 				label = "client"
 			}
-			if rspHs.Finished.Match(s.keyBlock.MasterSecret, s.handshake.savedHash, label) {
+			if incomingHs.Finished.Match(s.keyBlock.MasterSecret, s.handshake.savedHash, label) {
 				if s.Type == SessionType_Server {
 					saveToSessionCache(s)
 				}
-				logDebug(s.peer, rspRec, "encryption matches, handshake complete")
+				logDebug(s.peer, incomingRec, "encryption matches, handshake complete")
 			} else {
 				s.handshake.state = "failed"
 				err = errors.New("dtls: crypto verification failed")
@@ -499,13 +550,12 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			s.handshake.state = "finished"
 			break
 		default:
-			logWarn(s.peer, rspRec, nil, "invalid handshake type [%v] received", rspRec.ContentType)
+			logWarn(s.peer, incomingRec, nil, "invalid handshake type [%v] received", incomingRec.ContentType)
 			err = errors.New("dtls: bad handshake type")
 			break
 		}
 	case ContentType_ChangeCipherSpec:
 		if !s.isHandshakeDone() {
-			s.decrypt = true
 			s.handshake.firstDecrypt = true
 			s.handshake.savedHash = s.getHash()
 			s.handshake.state = "cipherchangespec"
@@ -517,9 +567,9 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 	if err == nil {
 		switch s.handshake.state {
 		case "recv-clienthello-initial":
-			reqHs = newHandshake(handshakeType_HelloVerifyRequest)
-			reqHs.HelloVerifyRequest.Init(s.handshake.cookie)
-			err = s.writeHandshake(reqHs)
+			outgoingHs = newHandshake(handshakeType_HelloVerifyRequest)
+			outgoingHs.HelloVerifyRequest.Init(s.handshake.cookie)
+			err = s.writeHandshake(outgoingHs)
 			if err != nil {
 				break
 			}
@@ -528,34 +578,34 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 
 			var hsArr []*handshake
 
-			reqHs = newHandshake(handshakeType_ServerHello)
-			reqHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
-			hsArr = append(hsArr, reqHs)
+			outgoingHs = newHandshake(handshakeType_ServerHello)
+			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
+			hsArr = append(hsArr, outgoingHs)
 
 			if s.selectedCipherSuite.NeedCert() {
-				reqHs = newHandshake(handshakeType_Certificate)
+				outgoingHs = newHandshake(handshakeType_Certificate)
 				// need server cert
-				_ = reqHs.Certificate.Init(s.listener.certificate.Certificate)
-				hsArr = append(hsArr, reqHs)
+				_ = outgoingHs.Certificate.Init(s.listener.certificate.Certificate)
+				hsArr = append(hsArr, outgoingHs)
 
 				s.handshake.eccCurve = EccCurve_P256
 				s.handshake.eccKeypair, _ = eccGetKeypair(s.handshake.eccCurve)
 
-				reqHs = newHandshake(handshakeType_ServerKeyExchange)
+				outgoingHs = newHandshake(handshakeType_ServerKeyExchange)
 				signature, err := eccGetKeySignature(s.handshake.client.Random, s.handshake.server.Random, s.handshake.eccKeypair.publicKey, s.handshake.eccCurve, s.listener.certificate.PrivateKey)
 				if err != nil {
 					break
 				}
-				reqHs.ServerKeyExchange.InitCert(EccCurve_P256, s.handshake.eccKeypair.publicKey, signature)
-				hsArr = append(hsArr, reqHs)
+				outgoingHs.ServerKeyExchange.InitCert(EccCurve_P256, s.handshake.eccKeypair.publicKey, signature)
+				hsArr = append(hsArr, outgoingHs)
 
-				reqHs = newHandshake(handshakeType_CertificateRequest)
-				hsArr = append(hsArr, reqHs)
+				outgoingHs = newHandshake(handshakeType_CertificateRequest)
+				hsArr = append(hsArr, outgoingHs)
 			}
 
-			reqHs = newHandshake(handshakeType_ServerHelloDone)
-			reqHs.ServerHelloDone.Init()
-			hsArr = append(hsArr, reqHs)
+			outgoingHs = newHandshake(handshakeType_ServerHelloDone)
+			outgoingHs.ServerHelloDone.Init()
+			hsArr = append(hsArr, outgoingHs)
 
 			err = s.writeHandshakes(hsArr)
 			if err != nil {
@@ -563,22 +613,21 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			}
 		case "recv-clienthello-resumed":
 
-			reqHs = newHandshake(handshakeType_ServerHello)
-			reqHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
-			err = s.writeHandshake(reqHs)
+			outgoingHs = newHandshake(handshakeType_ServerHello)
+			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
+			err = s.writeHandshake(outgoingHs)
 
 			s.initKeyBlock()
 
 			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
 			if DebugHandshake {
-				logDebug(s.peer, rspRec, "session resume incremented epoc from %d to %d", s.getEpoch(), s.getEpoch()+1)
+				logDebug(s.peer, incomingRec, "session resume incremented epoc from %d to %d", s.getEpoch(), s.getEpoch()+1)
 			}
 			s.incEpoch()
 			err = s.writeRecord(rec)
 			if err != nil {
 				break
 			}
-			s.encrypt = true
 
 			reqHs2 := newHandshake(handshakeType_Finished)
 			reqHs2.Finished.Init(s.keyBlock.MasterSecret, s.getHash(), "server")
@@ -587,12 +636,12 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 				break
 			}
 		case "recv-helloverifyrequest":
-			reqHs = newHandshake(handshakeType_ClientHello)
-			err = reqHs.ClientHello.Init(s.Id, s.handshake.client.Random, s.handshake.cookie, s.listener.cipherSuites, s.listener.compressionMethods)
+			outgoingHs = newHandshake(handshakeType_ClientHello)
+			err = outgoingHs.ClientHello.Init(s.Id, s.handshake.client.Random, s.handshake.cookie, s.listener.cipherSuites, s.listener.compressionMethods)
 			if err != nil {
 				break
 			}
-			err = s.writeHandshake(reqHs)
+			err = s.writeHandshake(outgoingHs)
 			if err != nil {
 				break
 			}
@@ -609,10 +658,10 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			}
 
 			if !s.handshake.resumed {
-				reqHs = newHandshake(handshakeType_ClientKeyExchange)
+				outgoingHs = newHandshake(handshakeType_ClientKeyExchange)
 
-				reqHs.ClientKeyExchange.InitPsk(s.peerIdentity)
-				err = s.writeHandshake(reqHs)
+				outgoingHs.ClientKeyExchange.InitPsk(s.peerIdentity)
+				err = s.writeHandshake(outgoingHs)
 				if err != nil {
 					break
 				}
@@ -626,11 +675,10 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			if err != nil {
 				break
 			}
-			s.encrypt = true
 
-			reqHs = newHandshake(handshakeType_Finished)
-			reqHs.Finished.Init(s.keyBlock.MasterSecret, s.getHash(), "client")
-			err = s.writeHandshake(reqHs)
+			outgoingHs = newHandshake(handshakeType_Finished)
+			outgoingHs.Finished.Init(s.keyBlock.MasterSecret, s.getHash(), "client")
+			err = s.writeHandshake(outgoingHs)
 			if err != nil {
 				break
 			}
@@ -638,18 +686,18 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			if s.Type == SessionType_Server && !s.handshake.resumed {
 				rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
 				if DebugHandshake {
-					logDebug(s.peer, rspRec, "finish incremented inc epoch from %d to %d", s.getEpoch(), s.getEpoch()+1)
+					logDebug(s.peer, incomingRec, "finish incremented inc epoch from %d to %d", s.getEpoch(), s.getEpoch()+1)
 				}
+				s.cacheHandshake(rec)
 				s.incEpoch()
 				err = s.writeRecord(rec)
 				if err != nil {
 					break
 				}
-				s.encrypt = true
 
-				reqHs = newHandshake(handshakeType_Finished)
-				reqHs.Finished.Init(s.keyBlock.MasterSecret, s.getHash(), "server")
-				err = s.writeHandshake(reqHs)
+				outgoingHs = newHandshake(handshakeType_Finished)
+				outgoingHs.Finished.Init(s.keyBlock.MasterSecret, s.getHash(), "server")
+				err = s.writeHandshake(outgoingHs)
 				if err != nil {
 					break
 				}
@@ -690,7 +738,6 @@ func (s *session) processHandshakePacket(rspRec *record) error {
 			}
 		}
 		close(s.handshake.done)
-		s.handshake = nil
 	}
 
 	return nil
