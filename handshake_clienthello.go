@@ -168,11 +168,23 @@ func (h *clientHello) GetCipherSuites() []CipherSuite {
 	return h.cipherSuites
 }
 
-func (h *clientHello) SelectCipherSuite(advertised []CipherSuite) CipherSuite {
-	for _, ad := range advertised {
-		for _, cipher := range h.cipherSuites {
-			if ad == cipher {
-				return cipher
+func (h *clientHello) SelectCipherSuite(supported []CipherSuite) CipherSuite {
+	fmt.Printf("code running [%v]\n", h.cipherSuites)
+	for _, ad := range supported {
+		if ad.NeedPsk() {
+			for _, cipher := range h.cipherSuites {
+				if ad == cipher {
+					return cipher
+				}
+			}
+		}
+	}
+	for _, ad := range supported {
+		if ad.NeedCert() {
+			for _, cipher := range h.cipherSuites {
+				if ad == cipher {
+					return cipher
+				}
 			}
 		}
 	}
