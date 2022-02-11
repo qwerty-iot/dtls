@@ -169,7 +169,6 @@ func (h *clientHello) GetCipherSuites() []CipherSuite {
 }
 
 func (h *clientHello) SelectCipherSuite(supported []CipherSuite) CipherSuite {
-	fmt.Printf("code running [%v]\n", h.cipherSuites)
 	for _, ad := range supported {
 		if ad.NeedPsk() {
 			for _, cipher := range h.cipherSuites {

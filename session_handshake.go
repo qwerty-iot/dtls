@@ -709,7 +709,11 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 		s.handshake.state = "failed"
 		s.handshake.err = err
 		if HandshakeCompleteCallback != nil {
-			HandshakeCompleteCallback(s.peer, s.peerIdentity, time.Now().Sub(s.started), err)
+			if s.selectedCipherSuite.NeedPsk() {
+				HandshakeCompleteCallback(s.peer, s.peerIdentity, time.Now().Sub(s.started), err)
+			} else {
+				HandshakeCompleteCallback(s.peer, s.peerPublicKey, time.Now().Sub(s.started), err)
+			}
 		}
 	FORERR:
 		for {
@@ -726,7 +730,11 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 	}
 	if s.handshake.state == "finished" {
 		if HandshakeCompleteCallback != nil {
-			HandshakeCompleteCallback(s.peer, s.peerIdentity, time.Now().Sub(s.started), nil)
+			if s.selectedCipherSuite.NeedPsk() {
+				HandshakeCompleteCallback(s.peer, s.peerIdentity, time.Now().Sub(s.started), nil)
+			} else {
+				HandshakeCompleteCallback(s.peer, s.peerPublicKey, time.Now().Sub(s.started), nil)
+			}
 		}
 	FORFIN:
 		for {

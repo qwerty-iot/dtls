@@ -66,6 +66,20 @@ func (p *Peer) SessionPublicKey() []byte {
 	return nil
 }
 
+func (p *Peer) SessionIdentityOrPublicKeyString() string {
+	if len(p.session.peerIdentity) != 0 {
+		if utf8.Valid(p.session.peerIdentity) {
+			return string(p.session.peerIdentity)
+		} else {
+			return hex.EncodeToString(p.session.peerIdentity)
+		}
+	} else if len(p.session.peerPublicKey) != 0 {
+		return hex.EncodeToString(p.session.peerPublicKey)
+	} else {
+		return ""
+	}
+}
+
 func (p *Peer) SessionCertificate() *x509.Certificate {
 	if p.session.peerCert != nil {
 		return p.session.peerCert
