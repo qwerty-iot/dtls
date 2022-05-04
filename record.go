@@ -5,7 +5,6 @@
 package dtls
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 )
@@ -17,6 +16,7 @@ const (
 	ContentType_Alert                        = 21
 	ContentType_Handshake                    = 22
 	ContentType_Appdata                      = 23
+	ContentType_Appdata_Cid                  = 25
 )
 
 type record struct {
@@ -25,11 +25,12 @@ type record struct {
 	Epoch       uint16
 	Sequence    uint64
 	Length      uint16
+	Cid         []byte
 	Data        []byte
 }
 
-func newRecord(contentType ContentType, epoch uint16, sequence uint64, data []byte) *record {
-	return &record{ContentType: contentType, Version: DtlsVersion12, Epoch: epoch, Sequence: sequence, Data: data, Length: uint16(len(data))}
+func newRecord(contentType ContentType, epoch uint16, sequence uint64, cid []byte, data []byte) *record {
+	return &record{ContentType: contentType, Version: DtlsVersion12, Epoch: epoch, Sequence: sequence, Cid: cid, Data: data, Length: uint16(len(data))}
 }
 
 func parseRecord(raw []byte) (*record, []byte, error) {
@@ -39,13 +40,24 @@ func parseRecord(raw []byte) (*record, []byte, error) {
 		return nil, nil, errors.New("dtls: record too small")
 	}
 
+	br := newByteReader(raw)
+
 	r := &record{}
-	r.ContentType = ContentType(raw[0])
-	r.Version = binary.BigEndian.Uint16(raw[1:])
-	i64 := binary.BigEndian.Uint64(raw[3:])
+	r.ContentType = ContentType(br.GetUint8())
+	r.Version = br.GetUint16()
+	i64 := br.GetUint64()
 	r.Epoch = uint16(i64 >> 48)
 	r.Sequence = i64 & 0x0000ffffffffffff
-	r.Length = binary.BigEndian.Uint16(raw[11:])
+	if r.ContentType == 25 {
+		cidLen := br.GetUint8()
+		if cidLen > 0 {
+			r.Cid = br.GetBytes(int(cidLen))
+		}
+		r.Length = br.GetUint16()
+	} else {
+
+		r.Length = br.GetUint16()
+	}
 
 	if r.Version != DtlsVersion12 && r.Version != DtlsVersion10 {
 		return nil, nil, errors.New("dtls version not supported")
@@ -54,11 +66,11 @@ func parseRecord(raw []byte) (*record, []byte, error) {
 	//if int(r.Length) < rawLen-13 {
 	//	return nil, nil, errors.New("dtls: record data size does not match length")
 	//}
-	r.Data = raw[13 : 13+r.Length]
+	r.Data = br.GetBytes(int(r.Length))
 
 	var rem []byte
-	if rawLen > 13+int(r.Length) {
-		rem = raw[13+int(r.Length):]
+	if rawLen > br.Offset() {
+		rem = raw[br.Offset():]
 	}
 	return r, rem, nil
 }
@@ -70,10 +82,19 @@ func (r *record) SetData(data []byte) {
 
 func (r *record) Bytes() []byte {
 	w := newByteWriter()
-	w.PutUint8(uint8(r.ContentType))
+
+	if r.ContentType == ContentType_Appdata && r.Cid != nil {
+		w.PutUint8(uint8(ContentType_Appdata_Cid))
+	} else {
+		w.PutUint8(uint8(r.ContentType))
+	}
 	w.PutUint16(r.Version)
 	w.PutUint16(r.Epoch)
 	w.PutUint48(r.Sequence)
+	if r.ContentType == ContentType_Appdata && r.Cid != nil {
+		w.PutUint8(uint8(len(r.Cid)))
+		w.PutBytes(r.Cid)
+	}
 	w.PutUint16(r.Length)
 	w.PutBytes(r.Data)
 	return w.Bytes()
@@ -87,7 +108,7 @@ func (r *record) IsHandshake() bool {
 }
 
 func (r *record) IsAppData() bool {
-	if r.ContentType == ContentType_Appdata {
+	if r.ContentType == ContentType_Appdata || r.ContentType == ContentType_Appdata_Cid {
 		return true
 	}
 	return false
@@ -110,6 +131,8 @@ func (r *record) TypeString() string {
 		return "Handshake(22)"
 	case ContentType_Appdata:
 		return "AppData(23)"
+	case ContentType_Appdata_Cid:
+		return "AppData_Cid(25)"
 	default:
 		return fmt.Sprintf("Unknown(%d)", r.ContentType)
 	}

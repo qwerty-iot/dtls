@@ -25,6 +25,8 @@ type session struct {
 	peerIdentity        []byte
 	peerCert            *x509.Certificate
 	peerPublicKey       []byte
+	peerCid             []byte
+	cid                 []byte
 	epoch               uint16
 	sequenceNumber0     uint64
 	sequenceNumber1     uint64

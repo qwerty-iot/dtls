@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+const DtlsExtConnectionId = uint16(54)
+
 type Listener struct {
 	transport          Transport
 	peers              map[string]*Peer

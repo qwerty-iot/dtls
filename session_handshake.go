@@ -148,7 +148,7 @@ func (s *session) writeHandshake(hs *handshake) error {
 
 		for idx := 0; idx < dataLen/s.listener.maxHandshakeSize+1; idx++ {
 			data = hs.FragmentBytes(idx*s.listener.maxHandshakeSize, s.listener.maxHandshakeSize)
-			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
+			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
 			if DebugHandshake {
 				logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
 			}
@@ -161,7 +161,7 @@ func (s *session) writeHandshake(hs *handshake) error {
 		}
 		return nil
 	} else {
-		rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
+		rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
 
 		if DebugHandshake {
 			logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
@@ -189,7 +189,7 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 
 			for idx := 0; idx < dataLen/s.listener.maxHandshakeSize+1; idx++ {
 				data = hs.FragmentBytes(idx*s.listener.maxHandshakeSize, s.listener.maxHandshakeSize)
-				rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
+				rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
 				if DebugHandshake {
 					logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
 				}
@@ -197,7 +197,7 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 				recs = append(recs, rec)
 			}
 		} else {
-			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
+			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
 
 			if DebugHandshake {
 				logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
