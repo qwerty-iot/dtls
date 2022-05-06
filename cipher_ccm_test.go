@@ -3,9 +3,10 @@ package dtls
 import (
 	"encoding/hex"
 	"fmt"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"testing"
 )
 
 func TestCipherCcmSuite(t *testing.T) {
@@ -27,7 +28,7 @@ func (s *CipherCcmSuite) TestEncryption() {
 	data := randomBytes(50)
 
 	ccm := CipherCcm{peer: nil}
-	cipherText, err := ccm.Encrypt(&record{Epoch: 5, Sequence: 10, ContentType: 1, Data: data}, key, iv, nil)
+	cipherText, err := ccm.Encrypt(&record{Epoch: 5, Sequence: 10, ContentType: 1, Data: data}, key, iv, nil, nil)
 	assert.Nil(s.T(), err)
 
 	clearText, err := ccm.Decrypt(&record{Epoch: 5, Sequence: 10, ContentType: 1, Data: cipherText}, key, iv, nil)

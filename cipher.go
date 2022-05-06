@@ -34,8 +34,8 @@ func (cs CipherSuite) NeedCert() bool {
 type Cipher interface {
 	GetPrfSize() int
 	GenerateKeyBlock(masterSecret []byte, rawKeyBlock []byte) *KeyBlock
-	Encrypt(rec *record, key []byte, iv []byte, mac []byte) ([]byte, error)
-	Decrypt(rec *record, key []byte, iv []byte, mac []byte) ([]byte, error)
+	Encrypt(rec *record, key []byte, iv []byte, mac []byte, cid []byte) ([]byte, error)
+	Decrypt(rec *record, key []byte, iv []byte, mac []byte, cid []byte) ([]byte, error)
 }
 
 func getCipher(peer *Peer, cipherSuite CipherSuite) Cipher {

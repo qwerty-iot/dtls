@@ -47,6 +47,10 @@ func (p *Peer) RemoteAddr() string {
 	return p.transport.String()
 }
 
+func (p *Peer) SessionCid() []byte {
+	return p.session.cid
+}
+
 func (p *Peer) SessionIdentity() []byte {
 	return p.session.peerIdentity
 }
@@ -98,14 +102,14 @@ func (p *Peer) touch() time.Time {
 }
 
 func (p *Peer) Close(alertDesc uint8) {
-	rec := newRecord(ContentType_Alert, p.session.getEpoch(), p.session.getNextSequence(), newAlert(AlertType_Fatal, alertDesc).Bytes())
+	rec := newRecord(ContentType_Alert, p.session.getEpoch(), p.session.getNextSequence(), nil, newAlert(AlertType_Fatal, alertDesc).Bytes())
 	p.activity = time.Now()
 	_ = p.session.writeRecord(rec)
 }
 
 func (p *Peer) Write(data []byte) error {
 	p.activity = time.Now()
-	rec := newRecord(ContentType_Appdata, p.session.getEpoch(), p.session.getNextSequence(), data)
+	rec := newRecord(ContentType_Appdata, p.session.getEpoch(), p.session.getNextSequence(), p.session.peerCid, data)
 	return p.session.writeRecord(rec)
 }
 

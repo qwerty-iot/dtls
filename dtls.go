@@ -13,9 +13,12 @@ import (
 	"time"
 )
 
+const DtlsExtConnectionId = uint16(254)
+
 type Listener struct {
 	transport          Transport
 	peers              map[string]*Peer
+	peerCids           map[string]*Peer
 	readQueue          chan *msg
 	mux                sync.Mutex
 	wg                 sync.WaitGroup
@@ -23,6 +26,7 @@ type Listener struct {
 	cipherSuites       []CipherSuite
 	compressionMethods []CompressionMethod
 	certificate        tls.Certificate
+	cidLen             int
 	maxPacketSize      int
 	maxHandshakeSize   int
 }
@@ -46,7 +50,7 @@ func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, erro
 		return nil, err
 	}
 
-	l := &Listener{transport: utrans, peers: make(map[string]*Peer), readQueue: make(chan *msg, 128), maxPacketSize: 1400, maxHandshakeSize: 1200}
+	l := &Listener{transport: utrans, peers: make(map[string]*Peer), peerCids: make(map[string]*Peer), readQueue: make(chan *msg, 128), maxPacketSize: 1400, maxHandshakeSize: 1200}
 	go sweeper(l)
 	l.wg.Add(1)
 	go receiver(l)
@@ -56,13 +60,17 @@ func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, erro
 func receiver(l *Listener) {
 	for {
 		if l.isShutdown {
-			logDebug(nil, nil, "receiver shutting down")
+			logInfo(nil, nil, "receiver shutting down")
 			l.wg.Done()
 			return
 		}
 		data, peer, err := l.transport.ReadPacket()
 		if err != nil {
-			logError(nil, nil, err, "failed to read packet")
+			if l.isShutdown {
+				logInfo(nil, nil, "receiver shutting down")
+			} else {
+				logError(nil, nil, err, "failed to read packet")
+			}
 			l.wg.Done()
 			return
 		}
@@ -74,8 +82,21 @@ func receiver(l *Listener) {
 		l.mux.Lock()
 		p, found := l.peers[peer.String()]
 
+		var cid []byte
 		if !found {
-			p, _ = l.addServerPeer(peer)
+			cid = peekCidFromRecord(data)
+			if cid != nil {
+				p, found = l.peerCids[string(cid)]
+				if found {
+					p.transport = peer
+					delete(l.peers, peer.String())
+					l.peers[peer.String()] = p
+					logDebug(p, nil, "peer updated from cid")
+				}
+			}
+		}
+		if !found {
+			p, _ = l.addServerPeer(peer, cid)
 			logDebug(p, nil, "received from unknown endpoint")
 		} else {
 			prev := p.touch()
@@ -95,6 +116,18 @@ func receiver(l *Listener) {
 			go processor(l, p)
 		}
 		p.Unlock()
+	}
+}
+
+func peekCidFromRecord(data []byte) []byte {
+	if data[0] == ContentType_Appdata_Cid {
+		cidLen := data[11]
+		if int(cidLen)+12 > len(data) {
+			return nil
+		}
+		return data[11 : 12+cidLen]
+	} else {
+		return nil
 	}
 }
 
@@ -198,6 +231,10 @@ func (l *Listener) SetFrameLimits(maxPacket int, maxHandshake int) {
 	l.maxHandshakeSize = maxHandshake
 }
 
+func (l *Listener) EnableConnectionId(cidLen int) {
+	l.cidLen = cidLen
+}
+
 func (l *Listener) RemovePeer(peer *Peer, alertDesc uint8) {
 	l.mux.Lock()
 	if alertDesc != AlertDesc_Noop {
@@ -221,21 +258,26 @@ func (l *Listener) RemovePeerByAddr(addr string, alertDesc uint8) {
 	return
 }
 
-func (l *Listener) addServerPeer(tpeer TransportEndpoint) (*Peer, error) {
+func (l *Listener) addServerPeer(tpeer TransportEndpoint, cid []byte) (*Peer, error) {
 	peer := &Peer{transport: tpeer, activity: time.Now(), transportQueue: make(chan []byte, 128)}
 	peer.session = newServerSession(peer)
 	peer.session.listener = l
+	peer.session.cid = cid
 
 	if SessionImportCallback != nil {
 		raw := SessionImportCallback(peer)
 		if len(raw) != 0 {
 			peer.session.restore(raw)
+			logDebug(peer, nil, "session imported")
 		}
 	}
 
 	//disabled lock because it is included in the existing lock
 	//l.mux.Lock()
 	l.peers[peer.RemoteAddr()] = peer
+	if peer.session.cid != nil {
+		l.peerCids[string(peer.session.cid)] = peer
+	}
 	//l.mux.Unlock()
 	return peer, nil
 }

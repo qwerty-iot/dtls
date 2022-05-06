@@ -25,6 +25,8 @@ type clientHello struct {
 	cipherSuites          []CipherSuite
 	compressionMethodsLen uint8
 	compressionMethods    []CompressionMethod
+	cidEnable             bool
+	cid                   []byte
 }
 
 func (h *clientHello) Init(sessionId []byte, randomBytes []byte, cookie []byte, cipherSuites []CipherSuite, compressionMethods []CompressionMethod) error {
@@ -47,6 +49,11 @@ func (h *clientHello) Init(sessionId []byte, randomBytes []byte, cookie []byte, 
 	h.compressionMethodsLen = uint8(len(compressionMethods))
 	h.compressionMethods = compressionMethods
 	return nil
+}
+
+func (h *clientHello) EnableCid(cid []byte) {
+	h.cidEnable = true
+	h.cid = cid
 }
 
 func (h *clientHello) Parse(rdr *byteReader, size int) error {
@@ -73,6 +80,24 @@ func (h *clientHello) Parse(rdr *byteReader, size int) error {
 		h.compressionMethods = make([]CompressionMethod, 0, h.compressionMethodsLen)
 		for i := 0; i < int(h.compressionMethodsLen); i++ {
 			h.compressionMethods = append(h.compressionMethods, CompressionMethod(rdr.GetUint8()))
+		}
+	}
+	extTotalLen := rdr.GetUint16()
+	if extTotalLen != 0 {
+		// have extensions
+		for read := 0; read < int(extTotalLen); {
+			extType := rdr.GetUint16()
+			extLen := rdr.GetUint16()
+			if extType == 254 {
+				h.cidEnable = true
+				cidLen := rdr.GetUint8()
+				if cidLen > 0 {
+					h.cid = rdr.GetBytes(int(cidLen))
+				}
+			} else {
+				rdr.GetBytes(int(extLen))
+			}
+			read += 4 + int(extLen)
 		}
 	}
 	return nil
@@ -102,26 +127,43 @@ func (h *clientHello) Bytes() []byte {
 			w.PutUint8(uint8(cm))
 		}
 	}
+
+	ext := newByteWriter()
+
+	if h.cidEnable {
+		ext.PutUint16(DtlsExtConnectionId)
+		ext.PutUint16(uint16(len(h.cid) + 1))
+		ext.PutUint8(uint8(len(h.cid)))
+		if len(h.cid) > 0 {
+			ext.PutBytes(h.cid)
+		}
+	}
+
 	if h.cipherSuites[0] == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 ||
 		h.cipherSuites[0] == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 {
 		// TODO: Implement proper extensions
-		w.PutUint16(24) // extensions length
 
-		w.PutUint16(10)     // supported_groups
-		w.PutUint16(4)      // len
-		w.PutUint16(1)      // list count
-		w.PutUint16(0x0017) // secp256r1
+		ext.PutUint16(10)     // supported_groups
+		ext.PutUint16(4)      // len
+		ext.PutUint16(1)      // list count
+		ext.PutUint16(0x0017) // secp256r1
 
-		w.PutUint16(11) // ec_point_formats
-		w.PutUint16(2)
-		w.PutUint16(1)
-		w.PutUint16(0)
+		ext.PutUint16(11) // ec_point_formats
+		ext.PutUint16(2)
+		ext.PutUint16(1)
+		ext.PutUint16(0)
 
-		w.PutUint16(13) // signature_algorithms
-		w.PutUint16(4)
-		w.PutUint16(2)
-		w.PutUint16(0x0403)
+		ext.PutUint16(13) // signature_algorithms
+		ext.PutUint16(4)
+		ext.PutUint16(2)
+		ext.PutUint16(0x0403)
 	}
+
+	if eb := ext.Bytes(); len(eb) != 0 {
+		w.PutUint16(uint16(len(eb)))
+		w.PutBytes(eb)
+	}
+
 	return w.Bytes()
 }
 
@@ -141,7 +183,8 @@ func (h *clientHello) Print() string {
 		comprStr = comprStr[:len(comprStr)-1]
 	}
 
-	return fmt.Sprintf("version[0x%X] randomData[%s][%X] sessionId[%X][%d] cookie[%X][%d] advertisedCipherSuites[%s][%d] advertisedCompressionMethods[%v][%d]", h.version, time.Unix(int64(h.randomTime), 0).String(), h.randomBytes, h.sessionId, h.sessionIdLen, h.cookie, h.cookieLen, suitesStr, h.cipherSuitesLen, comprStr, h.compressionMethodsLen)
+	return fmt.Sprintf("version[0x%X] randomData[%s][%X] sessionId[%X][%d] cookie[%X][%d] advertisedCipherSuites[%s][%d] advertisedCompressionMethods[%v][%d] cid[%t][%X]", h.version, time.Unix(int64(h.randomTime), 0).String(),
+		h.randomBytes, h.sessionId, h.sessionIdLen, h.cookie, h.cookieLen, suitesStr, h.cipherSuitesLen, comprStr, h.compressionMethodsLen, h.cidEnable, h.cid)
 }
 
 func (h *clientHello) GetRandom() (time.Time, []byte) {

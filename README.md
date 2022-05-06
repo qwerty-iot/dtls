@@ -27,6 +27,8 @@ Key Features
 * Supports persisting session data for resumption later
 * Designed for OMA LWM2M
   comliance [LWM2M](http://technical.openmobilealliance.org/Technical/technical-information/release-program/current-releases/oma-lightweightm2m-v1-0)
+* Support for Connection
+  ID [RFC-9146 (Nov/19 draft)](https://datatracker.ietf.org/doc/html/draft-ietf-tls-dtls-connection-id-05)
 
 TODO
 ----
@@ -37,6 +39,7 @@ TODO
 * Implement replay detection
 * Implement client hello stateless cookie handling
 * Improve parallel processing of incoming packets
+* Implement Connection ID for latest RFC-9146 draft
 
 Samples
 -------

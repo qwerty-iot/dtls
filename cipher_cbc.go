@@ -37,10 +37,11 @@ func (c CipherCBC) GenerateKeyBlock(masterSecret []byte, rawKeyBlock []byte) *Ke
 		ServerIV:       rawKeyBlock[112:128]}
 }
 
-func newMac(epoch uint16, seq uint64, msgType uint8, data []byte, key []byte) ([]byte, error) {
+func newMac(epoch uint16, seq uint64, msgType uint8, data []byte, key []byte, cid []byte) ([]byte, error) {
 	h := hmac.New(sha256.New, key)
 
-	aad := newAad(epoch, seq, msgType, uint16(len(data)))
+	// TODO-CID: implement
+	aad := newAad(epoch, seq, msgType, nil, uint16(len(data)))
 
 	if _, err := h.Write(aad); err != nil {
 		return nil, err
@@ -51,7 +52,7 @@ func newMac(epoch uint16, seq uint64, msgType uint8, data []byte, key []byte) ([
 	return h.Sum(nil), nil
 }
 
-func (c CipherCBC) Encrypt(rec *record, key []byte, iv []byte, mac []byte) ([]byte, error) {
+func (c CipherCBC) Encrypt(rec *record, key []byte, iv []byte, mac []byte, cid []byte) ([]byte, error) {
 
 	clearText := rec.Data
 
@@ -62,7 +63,7 @@ func (c CipherCBC) Encrypt(rec *record, key []byte, iv []byte, mac []byte) ([]by
 	cbc := cipher.NewCBCEncrypter(cbcCipher, iv).(cbcMode)
 	blockSize := cbc.BlockSize()
 
-	MAC, err := newMac(rec.Epoch, rec.Sequence, uint8(rec.ContentType), clearText, mac)
+	MAC, err := newMac(rec.Epoch, rec.Sequence, uint8(rec.ContentType), clearText, mac, cid)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +100,7 @@ func (c CipherCBC) Encrypt(rec *record, key []byte, iv []byte, mac []byte) ([]by
 	return cipherText, nil
 }
 
-func (c CipherCBC) Decrypt(rec *record, key []byte, iv []byte, mac []byte) ([]byte, error) {
+func (c CipherCBC) Decrypt(rec *record, key []byte, iv []byte, mac []byte, cid []byte) ([]byte, error) {
 
 	cbcCipher, err := aes.NewCipher(key)
 	if err != nil {
@@ -136,7 +137,7 @@ func (c CipherCBC) Decrypt(rec *record, key []byte, iv []byte, mac []byte) ([]by
 
 	clearText = clearText[:dataEnd]
 
-	actualMAC, err := newMac(rec.Epoch, rec.Sequence, uint8(rec.ContentType), clearText, mac)
+	actualMAC, err := newMac(rec.Epoch, rec.Sequence, uint8(rec.ContentType), clearText, mac, cid)
 	if paddingGood != 255 || err != nil || !hmac.Equal(actualMAC, expectedMAC) {
 		return nil, errors.New("dtls: mac invalid")
 	}

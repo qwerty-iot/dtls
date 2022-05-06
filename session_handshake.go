@@ -37,7 +37,9 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		if len(rec.Data) < 8 {
 			if rec.IsAlert() {
 				// we were expecting encryption, but received an unencrypted alert message.
-				logDebug(s.peer, rec, "read %s (rem:%d) (decrypted:not-applicable-alert)", rec.Print(), len(rem))
+				if DebugEncryption {
+					logDebug(s.peer, rec, "read %s (rem:%d) (decrypted:not-applicable-alert)", rec.Print(), len(rem))
+				}
 				return rec, rem, nil
 			} else {
 				err = errors.New("dtls: data underflow, expected at least 8 bytes")
@@ -58,7 +60,14 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 			mac = s.keyBlock.ClientMac
 		}
 
-		clearText, err := s.cipher.Decrypt(rec, key, iv, mac)
+		clearText, err := s.cipher.Decrypt(rec, key, iv, mac, s.cid)
+		if s.cid != nil {
+			// DTLSInnerPlaintext
+			clearText = bytes.TrimRight(clearText, "\x00")
+			rec.ContentType = ContentType(clearText[len(clearText)-1])
+			clearText = clearText[:len(clearText)-1]
+		}
+
 		if err != nil {
 			if s.handshake != nil && s.handshake.firstDecrypt {
 				//callback that psk is invalid
@@ -66,7 +75,9 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 				s.handshake.firstDecrypt = false
 			}
 			if rec.IsHandshake() {
-				logDebug(s.peer, rec, "read %s (rem:%d) (decrypted:not-applicable): %s", rec.Print(), len(rem), err.Error())
+				if DebugEncryption {
+					logDebug(s.peer, rec, "read %s (rem:%d) (decrypted:not-applicable): %s", rec.Print(), len(rem), err.Error())
+				}
 				return rec, rem, nil
 			} else {
 				logWarn(s.peer, rec, err, "read decryption error")
@@ -78,7 +89,9 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		}
 
 		rec.SetData(clearText)
-		logDebug(s.peer, rec, "read %s (rem:%d)", rec.Print(), len(rem))
+		if DebugEncryption {
+			logDebug(s.peer, rec, "read %s (rem:%d)", rec.Print(), len(rem))
+		}
 	}
 
 	return rec, rem, nil
@@ -130,7 +143,9 @@ func (s *session) parseHandshake(rec *record) (*handshake, error) {
 		s.updateHash(rec.Data)
 	}
 
-	logDebug(s.peer, rec, "read handshake: %s", hs.Print())
+	if DebugHandshake {
+		logDebug(s.peer, rec, "read handshake: %s", hs.Print())
+	}
 	return hs, err
 }
 
@@ -148,7 +163,7 @@ func (s *session) writeHandshake(hs *handshake) error {
 
 		for idx := 0; idx < dataLen/s.listener.maxHandshakeSize+1; idx++ {
 			data = hs.FragmentBytes(idx*s.listener.maxHandshakeSize, s.listener.maxHandshakeSize)
-			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
+			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
 			if DebugHandshake {
 				logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
 			}
@@ -161,7 +176,7 @@ func (s *session) writeHandshake(hs *handshake) error {
 		}
 		return nil
 	} else {
-		rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
+		rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
 
 		if DebugHandshake {
 			logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
@@ -189,7 +204,7 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 
 			for idx := 0; idx < dataLen/s.listener.maxHandshakeSize+1; idx++ {
 				data = hs.FragmentBytes(idx*s.listener.maxHandshakeSize, s.listener.maxHandshakeSize)
-				rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
+				rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
 				if DebugHandshake {
 					logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
 				}
@@ -197,7 +212,7 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 				recs = append(recs, rec)
 			}
 		} else {
-			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), data)
+			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
 
 			if DebugHandshake {
 				logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
@@ -258,15 +273,25 @@ func (s *session) writeRecord(rec *record) error {
 			key = s.keyBlock.ServerWriteKey
 			mac = s.keyBlock.ServerMac
 		}
-		cipherText, err := s.cipher.Encrypt(rec, key, iv, mac)
+		if s.peerCid != nil {
+			// DTLSInnerPlaintext
+			rec.Data = append(rec.Data, byte(rec.ContentType))
+			rec.ContentType = ContentType_Appdata_Cid
+			rec.Cid = s.peerCid
+		}
+		cipherText, err := s.cipher.Encrypt(rec, key, iv, mac, s.peerCid)
 		if err != nil {
 			return err
 		}
 		rec.SetData(cipherText)
-		logDebug(s.peer, rec, "write (encrypted) %s", rec.Print())
+		if DebugEncryption {
+			logDebug(s.peer, rec, "write (encrypted) %s", rec.Print())
+		}
 		return s.peer.transport.WritePacket(rec.Bytes())
 	} else {
-		logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
+		if DebugEncryption {
+			logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
+		}
 		return s.peer.transport.WritePacket(rec.Bytes())
 	}
 }
@@ -287,13 +312,15 @@ func (s *session) writeRecords(recs []*record) error {
 				key = s.keyBlock.ServerWriteKey
 				mac = s.keyBlock.ServerMac
 			}
-			cipherText, err := s.cipher.Encrypt(rec, key, iv, mac)
+			cipherText, err := s.cipher.Encrypt(rec, key, iv, mac, s.peerCid)
 			if err != nil {
 				return err
 			}
 			rec.SetData(cipherText)
 		}
-		logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
+		if DebugEncryption {
+			logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
+		}
 		nextRec := rec.Bytes()
 		if len(nextRec)+buf.Len() > s.listener.maxPacketSize {
 			if err := s.peer.transport.WritePacket(buf.Bytes()); err != nil {
@@ -342,10 +369,12 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 	var outgoingHs, incomingHs *handshake
 	var err error
 
-	if s.handshake != nil {
-		logDebug(s.peer, incomingRec, "processing handshake packet, current state: %s", s.handshake.state)
-	} else {
-		logDebug(s.peer, incomingRec, "processing handshake packet, current state: nil")
+	if DebugHandshake {
+		if s.handshake != nil {
+			logDebug(s.peer, incomingRec, "processing handshake packet, current state: %s", s.handshake.state)
+		} else {
+			logDebug(s.peer, incomingRec, "processing handshake packet, current state: nil")
+		}
 	}
 
 	switch incomingRec.ContentType {
@@ -402,6 +431,10 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 					s.handshake.state = "failed"
 					err = errors.New("dtls: no valid cipher available")
 					break
+				}
+				if incomingHs.ClientHello.cidEnable {
+					s.handshake.cidEnabled = true
+					s.peerCid = incomingHs.ClientHello.cid
 				}
 
 				if incomingHs.ClientHello.HasSessionId() {
@@ -460,6 +493,9 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 				err = errors.New("dtls: no valid cipher available")
 				break
 			}
+			s.handshake.cidEnabled = true
+			s.peerCid = incomingHs.ServerHello.cid
+
 			s.handshake.state = "recv-serverhello"
 		case handshakeType_HelloVerifyRequest:
 			if len(s.handshake.cookie) == 0 {
@@ -578,8 +614,25 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 
 			var hsArr []*handshake
 
+			if s.handshake.cidEnabled && s.listener.cidLen > 0 {
+				// if we receive a CID from the client, use the same length CID.
+				cidLen := s.listener.cidLen
+				/*if s.peerCid != nil {
+					cidLen = len(s.peerCid)
+				}*/
+				s.cid = randomBytes(cidLen)
+
+				// first byte of server generated CID is always its length
+				s.cid[0] = byte(cidLen - 1)
+				s.listener.mux.Lock()
+				s.listener.peerCids[string(s.cid)] = s.peer
+				s.listener.mux.Unlock()
+				logDebug(s.peer, incomingRec, "server cid generated: %X", s.cid)
+			}
+
 			outgoingHs = newHandshake(handshakeType_ServerHello)
-			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
+			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.selectedCipherSuite)
+
 			hsArr = append(hsArr, outgoingHs)
 
 			if s.selectedCipherSuite.NeedCert() {
@@ -614,12 +667,12 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 		case "recv-clienthello-resumed":
 
 			outgoingHs = newHandshake(handshakeType_ServerHello)
-			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
+			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.selectedCipherSuite)
 			err = s.writeHandshake(outgoingHs)
 
 			s.initKeyBlock()
 
-			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
+			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), s.getPeerCid(), []byte{0x01})
 			if DebugHandshake {
 				logDebug(s.peer, incomingRec, "session resume incremented epoc from %d to %d", s.getEpoch(), s.getEpoch()+1)
 			}
@@ -669,7 +722,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 
 			s.initKeyBlock()
 
-			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
+			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), s.getPeerCid(), []byte{0x01})
 			s.incEpoch()
 			err = s.writeRecord(rec)
 			if err != nil {
@@ -684,7 +737,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			}
 		case "finished":
 			if s.Type == SessionType_Server && !s.handshake.resumed {
-				rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
+				rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), s.getPeerCid(), []byte{0x01})
 				if DebugHandshake {
 					logDebug(s.peer, incomingRec, "finish incremented inc epoch from %d to %d", s.getEpoch(), s.getEpoch()+1)
 				}
