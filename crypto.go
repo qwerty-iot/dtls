@@ -35,13 +35,12 @@ func newAad(epoch uint16, seq uint64, msgType uint8, cid []byte, dataLen uint16)
 	w := newByteWriter()
 	if cid != nil {
 		// placeholder
-		w.PutUint8(uint8(ContentType_Appdata_Cid))
-		w.PutUint8(uint8(len(cid)))
-		w.PutUint8(uint8(ContentType_Appdata_Cid))
-		w.PutUint16(DtlsVersion12)
 		w.PutUint16(epoch)
 		w.PutUint48(seq)
+		w.PutUint8(msgType)
+		w.PutUint16(DtlsVersion12)
 		w.PutBytes(cid)
+		w.PutUint8(uint8(len(cid)))
 		w.PutUint16(dataLen)
 	} else {
 		w.PutUint16(epoch)

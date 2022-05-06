@@ -13,18 +13,21 @@ func main() {
 	dtls.SetLogLevel("debug")
 	dtls.DebugAll()
 
-	cert, err := dtls.CertificateFromDisk("./examples/key.pem", "./examples/cert.pem")
+	/*cert, err := dtls.CertificateFromDisk("./examples/key.pem", "./examples/cert.pem")
 	if err != nil {
 		fmt.Printf("bad cert: %s\n", err.Error())
-	}
+	}*/
 
-	listener, _ := dtls.NewUdpListener(":5684", time.Second*5)
-	if cert != nil {
+	listener, err := dtls.NewUdpListener(":4433", time.Second*5)
+	if err != nil {
+		fmt.Printf("bad listener: %s\n", err.Error())
+	}
+	/*if cert != nil {
 		listener.AddCipherSuite(dtls.CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8)
 		listener.SetCertificate(*cert)
-	}
+	}*/
 	listener.AddCipherSuite(dtls.CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
-	listener.AddCipherSuite(dtls.CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256)
+	//listener.AddCipherSuite(dtls.CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256)
 
 	listener.AddCompressionMethod(dtls.CompressionMethod_Null)
 
@@ -52,9 +55,19 @@ func main() {
 	*/
 
 	mks := dtls.NewKeystoreInMemory()
-	psk, _ := hex.DecodeString("11223344556677889900")
-	mks.AddKey([]byte("mydevice"), psk)
+	psk, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
+	mks.AddKey([]byte("mbedtls"), psk)
 	dtls.SetKeyStores([]dtls.Keystore{mks})
 
+	go Reader(listener)
+
 	time.Sleep(time.Hour)
+}
+
+func Reader(listener *dtls.Listener) {
+	for {
+		data, peer := listener.Read()
+		fmt.Printf("%s: %s\n", peer.RemoteAddr(), string(data))
+		peer.Write(data)
+	}
 }

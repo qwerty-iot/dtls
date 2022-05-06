@@ -48,16 +48,13 @@ func parseRecord(raw []byte) (*record, []byte, error) {
 	i64 := br.GetUint64()
 	r.Epoch = uint16(i64 >> 48)
 	r.Sequence = i64 & 0x0000ffffffffffff
-	if r.ContentType == 25 {
+	if r.ContentType == ContentType_Appdata_Cid {
 		cidLen := br.GetUint8()
 		if cidLen > 0 {
 			r.Cid = br.GetBytes(int(cidLen))
 		}
-		r.Length = br.GetUint16()
-	} else {
-
-		r.Length = br.GetUint16()
 	}
+	r.Length = br.GetUint16()
 
 	if r.Version != DtlsVersion12 && r.Version != DtlsVersion10 {
 		return nil, nil, errors.New("dtls version not supported")
@@ -83,16 +80,11 @@ func (r *record) SetData(data []byte) {
 func (r *record) Bytes() []byte {
 	w := newByteWriter()
 
-	if r.ContentType == ContentType_Appdata && r.Cid != nil {
-		w.PutUint8(uint8(ContentType_Appdata_Cid))
-	} else {
-		w.PutUint8(uint8(r.ContentType))
-	}
+	w.PutUint8(uint8(r.ContentType))
 	w.PutUint16(r.Version)
 	w.PutUint16(r.Epoch)
 	w.PutUint48(r.Sequence)
-	if r.ContentType == ContentType_Appdata && r.Cid != nil {
-		w.PutUint8(uint8(len(r.Cid)))
+	if r.ContentType == ContentType_Appdata_Cid && r.Cid != nil {
 		w.PutBytes(r.Cid)
 	}
 	w.PutUint16(r.Length)

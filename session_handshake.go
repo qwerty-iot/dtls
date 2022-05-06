@@ -58,7 +58,14 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 			mac = s.keyBlock.ClientMac
 		}
 
-		clearText, err := s.cipher.Decrypt(rec, key, iv, mac)
+		clearText, err := s.cipher.Decrypt(rec, key, iv, mac, s.cid)
+		if s.cid != nil {
+			// DTLSInnerPlaintext
+			clearText = bytes.TrimRight(clearText, "\x00")
+			rec.ContentType = ContentType(clearText[len(clearText)-1])
+			clearText = clearText[:len(clearText)-1]
+		}
+
 		if err != nil {
 			if s.handshake != nil && s.handshake.firstDecrypt {
 				//callback that psk is invalid
@@ -258,7 +265,13 @@ func (s *session) writeRecord(rec *record) error {
 			key = s.keyBlock.ServerWriteKey
 			mac = s.keyBlock.ServerMac
 		}
-		cipherText, err := s.cipher.Encrypt(rec, key, iv, mac)
+		if s.peerCid != nil {
+			// DTLSInnerPlaintext
+			rec.Data = append(rec.Data, byte(rec.ContentType))
+			rec.ContentType = ContentType_Appdata_Cid
+			rec.Cid = s.peerCid
+		}
+		cipherText, err := s.cipher.Encrypt(rec, key, iv, mac, s.peerCid)
 		if err != nil {
 			return err
 		}
@@ -287,7 +300,7 @@ func (s *session) writeRecords(recs []*record) error {
 				key = s.keyBlock.ServerWriteKey
 				mac = s.keyBlock.ServerMac
 			}
-			cipherText, err := s.cipher.Encrypt(rec, key, iv, mac)
+			cipherText, err := s.cipher.Encrypt(rec, key, iv, mac, s.peerCid)
 			if err != nil {
 				return err
 			}
@@ -403,6 +416,10 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 					err = errors.New("dtls: no valid cipher available")
 					break
 				}
+				if incomingHs.ClientHello.cidEnable {
+					s.handshake.cidEnabled = true
+					s.peerCid = incomingHs.ClientHello.cid
+				}
 
 				if incomingHs.ClientHello.HasSessionId() {
 					//resuming a session
@@ -460,6 +477,9 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 				err = errors.New("dtls: no valid cipher available")
 				break
 			}
+			s.handshake.cidEnabled = true
+			s.peerCid = incomingHs.ServerHello.cid
+
 			s.handshake.state = "recv-serverhello"
 		case handshakeType_HelloVerifyRequest:
 			if len(s.handshake.cookie) == 0 {
@@ -578,8 +598,22 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 
 			var hsArr []*handshake
 
+			// TODO-CID: check if client enabled CID, figure out length of CID?
+			if s.handshake.cidEnabled {
+				// if we receive a CID from the client, use the same length CID.
+				cidLen := len(s.peerCid)
+				if cidLen == 0 {
+					cidLen = s.listener.cidLen
+				}
+				s.cid = randomBytes(cidLen)
+				// first byte of server generated CID is always its length
+				s.cid[0] = byte(cidLen - 1)
+				logDebug(s.peer, incomingRec, "server cid generated: %X", s.cid)
+			}
+
 			outgoingHs = newHandshake(handshakeType_ServerHello)
-			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
+			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.selectedCipherSuite)
+
 			hsArr = append(hsArr, outgoingHs)
 
 			if s.selectedCipherSuite.NeedCert() {
@@ -614,12 +648,12 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 		case "recv-clienthello-resumed":
 
 			outgoingHs = newHandshake(handshakeType_ServerHello)
-			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.selectedCipherSuite)
+			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.selectedCipherSuite)
 			err = s.writeHandshake(outgoingHs)
 
 			s.initKeyBlock()
 
-			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
+			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), s.getPeerCid(), []byte{0x01})
 			if DebugHandshake {
 				logDebug(s.peer, incomingRec, "session resume incremented epoc from %d to %d", s.getEpoch(), s.getEpoch()+1)
 			}
@@ -669,7 +703,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 
 			s.initKeyBlock()
 
-			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
+			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), s.getPeerCid(), []byte{0x01})
 			s.incEpoch()
 			err = s.writeRecord(rec)
 			if err != nil {
@@ -684,7 +718,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			}
 		case "finished":
 			if s.Type == SessionType_Server && !s.handshake.resumed {
-				rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), []byte{0x01})
+				rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), s.getPeerCid(), []byte{0x01})
 				if DebugHandshake {
 					logDebug(s.peer, incomingRec, "finish incremented inc epoch from %d to %d", s.getEpoch(), s.getEpoch()+1)
 				}

@@ -51,6 +51,7 @@ type sessionHandshake struct {
 	masterSecret []byte
 	verifySum    []byte
 	firstDecrypt bool
+	cidEnabled   bool
 	dedup        map[uint16]bool
 	dedupCache   map[uint16][]*record
 	done         chan error
@@ -155,6 +156,10 @@ func (s *session) getSequence() uint64 {
 		seq := s.sequenceNumber1
 		return seq
 	}
+}
+
+func (s *session) getPeerCid() []byte {
+	return s.peerCid
 }
 
 func (s *session) initKeyBlock() {

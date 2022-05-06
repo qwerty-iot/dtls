@@ -8,6 +8,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"time"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 type serverHello struct {
@@ -18,14 +20,16 @@ type serverHello struct {
 	sessionId         []byte
 	cipherSuite       CipherSuite
 	compressionMethod CompressionMethod
+	cid               []byte
 }
 
-func (h *serverHello) Init(randomBytes []byte, sessionId []byte, cipherSuite CipherSuite) {
+func (h *serverHello) Init(randomBytes []byte, sessionId []byte, cid []byte, cipherSuite CipherSuite) {
 	h.version = DtlsVersion12
 	h.randomBytes = randomBytes
 	h.randomTime = binary.BigEndian.Uint32(h.randomBytes[:4])
 	h.sessionId = sessionId
 	h.sessionIdLen = uint8(len(h.sessionId))
+	h.cid = cid
 	h.cipherSuite = cipherSuite
 	h.compressionMethod = CompressionMethod_Null
 }
@@ -41,6 +45,21 @@ func (h *serverHello) Parse(rdr *byteReader, size int) error {
 	h.cipherSuite = CipherSuite(rdr.GetUint16())
 	h.compressionMethod = CompressionMethod(rdr.GetUint8())
 
+	extTotalLen := rdr.GetUint16()
+	if extTotalLen != 0 {
+		// have extensions
+		for read := 0; read < int(extTotalLen); {
+			extType := rdr.GetUint16()
+			extLen := rdr.GetUint16()
+			if extType == 254 {
+				cidLen := rdr.GetUint8()
+				h.cid = rdr.GetBytes(int(cidLen))
+			} else {
+				rdr.GetBytes(int(extLen))
+			}
+			read += 4 + int(extLen)
+		}
+	}
 	return nil
 }
 
@@ -55,27 +74,42 @@ func (h *serverHello) Bytes() []byte {
 	w.PutUint16(uint16(h.cipherSuite))
 	w.PutUint8(uint8(h.compressionMethod))
 
+	ext := newByteWriter()
+
+	if h.cid != nil {
+		ext.PutUint16(DtlsExtConnectionId)
+		ext.PutUint16(uint16(len(h.cid) + 1))
+		if len(h.cid) > 0 {
+			ext.PutUint8(uint8(len(h.cid)))
+			ext.PutBytes(h.cid)
+		}
+	}
+
 	if h.cipherSuite == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 ||
 		h.cipherSuite == CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 {
-		// TODO: Implement proper extensions
-		w.PutUint16(14) // extensions length
 
-		w.PutUint16(10)     // supported_groups
-		w.PutUint16(4)      // len
-		w.PutUint16(2)      // list count
-		w.PutUint16(0x0017) // secp256r1
+		ext.PutUint16(10)     // supported_groups
+		ext.PutUint16(4)      // len
+		ext.PutUint16(2)      // list count
+		ext.PutUint16(0x0017) // secp256r1
 
-		w.PutUint16(11) // ec_point_formats
-		w.PutUint16(2)
-		w.PutUint8(1)
-		w.PutUint8(0)
+		ext.PutUint16(11) // ec_point_formats
+		ext.PutUint16(2)
+		ext.PutUint8(1)
+		ext.PutUint8(0)
+	}
+
+	if eb := ext.Bytes(); len(eb) != 0 {
+		w.PutUint16(uint16(len(eb)))
+		w.PutBytes(eb)
+		spew.Dump(eb)
 	}
 
 	return w.Bytes()
 }
 
 func (h *serverHello) Print() string {
-	return fmt.Sprintf("version[%X] randomData[%s][%d bytes] sessionId[%X][%d] cipherSuite[%s] compressionMethod[%x]", h.version, time.Unix(int64(h.randomTime), 0).String(), len(h.randomBytes), h.sessionId, h.sessionIdLen, cipherSuiteToString(h.cipherSuite), h.compressionMethod)
+	return fmt.Sprintf("version[%X] randomData[%s][%d bytes] sessionId[%X][%d] cipherSuite[%s] compressionMethod[%x] cid[%X]", h.version, time.Unix(int64(h.randomTime), 0).String(), len(h.randomBytes), h.sessionId, h.sessionIdLen, cipherSuiteToString(h.cipherSuite), h.compressionMethod, h.cid)
 }
 
 func (h *serverHello) GetRandom() (time.Time, []byte) {

@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const DtlsExtConnectionId = uint16(54)
+const DtlsExtConnectionId = uint16(254)
 
 type Listener struct {
 	transport          Transport
@@ -25,6 +25,7 @@ type Listener struct {
 	cipherSuites       []CipherSuite
 	compressionMethods []CompressionMethod
 	certificate        tls.Certificate
+	cidLen             int
 	maxPacketSize      int
 	maxHandshakeSize   int
 }
@@ -198,6 +199,10 @@ func (l *Listener) SetCertificate(cert tls.Certificate) error {
 func (l *Listener) SetFrameLimits(maxPacket int, maxHandshake int) {
 	l.maxPacketSize = maxPacket
 	l.maxHandshakeSize = maxHandshake
+}
+
+func (l *Listener) SetCid(cidLen int) {
+	l.cidLen = cidLen
 }
 
 func (l *Listener) RemovePeer(peer *Peer, alertDesc uint8) {
