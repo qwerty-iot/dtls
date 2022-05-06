@@ -8,8 +8,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"time"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 type serverHello struct {
@@ -102,7 +100,6 @@ func (h *serverHello) Bytes() []byte {
 	if eb := ext.Bytes(); len(eb) != 0 {
 		w.PutUint16(uint16(len(eb)))
 		w.PutBytes(eb)
-		spew.Dump(eb)
 	}
 
 	return w.Bytes()

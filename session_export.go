@@ -21,6 +21,8 @@ type SessionStore struct {
 	Id                  []byte      `json:"id"`
 	Type                string      `json:"type"`
 	RemoteAddr          string      `json:"remoteAddr"`
+	Cid                 []byte      `json:"cid"`
+	PeerCid             []byte      `json:"peerCid"`
 	Epoch               uint16      `json:"epoch"`
 	SequenceNumber0     uint64      `json:"sequenceNumber0"`
 	SequenceNumber1     uint64      `json:"sequenceNumber1"`
@@ -38,6 +40,8 @@ func (s *session) export() string {
 		Id:                  s.Id,
 		Type:                s.Type,
 		RemoteAddr:          s.peer.RemoteAddr(),
+		Cid:                 s.cid,
+		PeerCid:             s.peerCid,
 		Epoch:               s.epoch,
 		SequenceNumber0:     s.sequenceNumber0,
 		SequenceNumber1:     s.sequenceNumber1,
@@ -84,6 +88,8 @@ func (s *session) restore(raw string) {
 	}
 	s.Id = ss.Id
 	s.Type = ss.Type
+	s.cid = ss.Cid
+	s.peerCid = ss.PeerCid
 	s.epoch = ss.Epoch
 	s.sequenceNumber0 = ss.SequenceNumber0
 	s.sequenceNumber1 = ss.SequenceNumber1

@@ -47,6 +47,10 @@ func (p *Peer) RemoteAddr() string {
 	return p.transport.String()
 }
 
+func (p *Peer) SessionCid() []byte {
+	return p.session.cid
+}
+
 func (p *Peer) SessionIdentity() []byte {
 	return p.session.peerIdentity
 }

@@ -37,7 +37,9 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		if len(rec.Data) < 8 {
 			if rec.IsAlert() {
 				// we were expecting encryption, but received an unencrypted alert message.
-				logDebug(s.peer, rec, "read %s (rem:%d) (decrypted:not-applicable-alert)", rec.Print(), len(rem))
+				if DebugEncryption {
+					logDebug(s.peer, rec, "read %s (rem:%d) (decrypted:not-applicable-alert)", rec.Print(), len(rem))
+				}
 				return rec, rem, nil
 			} else {
 				err = errors.New("dtls: data underflow, expected at least 8 bytes")
@@ -73,7 +75,9 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 				s.handshake.firstDecrypt = false
 			}
 			if rec.IsHandshake() {
-				logDebug(s.peer, rec, "read %s (rem:%d) (decrypted:not-applicable): %s", rec.Print(), len(rem), err.Error())
+				if DebugEncryption {
+					logDebug(s.peer, rec, "read %s (rem:%d) (decrypted:not-applicable): %s", rec.Print(), len(rem), err.Error())
+				}
 				return rec, rem, nil
 			} else {
 				logWarn(s.peer, rec, err, "read decryption error")
@@ -85,7 +89,9 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		}
 
 		rec.SetData(clearText)
-		logDebug(s.peer, rec, "read %s (rem:%d)", rec.Print(), len(rem))
+		if DebugEncryption {
+			logDebug(s.peer, rec, "read %s (rem:%d)", rec.Print(), len(rem))
+		}
 	}
 
 	return rec, rem, nil
@@ -137,7 +143,9 @@ func (s *session) parseHandshake(rec *record) (*handshake, error) {
 		s.updateHash(rec.Data)
 	}
 
-	logDebug(s.peer, rec, "read handshake: %s", hs.Print())
+	if DebugHandshake {
+		logDebug(s.peer, rec, "read handshake: %s", hs.Print())
+	}
 	return hs, err
 }
 
@@ -276,10 +284,14 @@ func (s *session) writeRecord(rec *record) error {
 			return err
 		}
 		rec.SetData(cipherText)
-		logDebug(s.peer, rec, "write (encrypted) %s", rec.Print())
+		if DebugEncryption {
+			logDebug(s.peer, rec, "write (encrypted) %s", rec.Print())
+		}
 		return s.peer.transport.WritePacket(rec.Bytes())
 	} else {
-		logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
+		if DebugEncryption {
+			logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
+		}
 		return s.peer.transport.WritePacket(rec.Bytes())
 	}
 }
@@ -306,7 +318,9 @@ func (s *session) writeRecords(recs []*record) error {
 			}
 			rec.SetData(cipherText)
 		}
-		logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
+		if DebugEncryption {
+			logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
+		}
 		nextRec := rec.Bytes()
 		if len(nextRec)+buf.Len() > s.listener.maxPacketSize {
 			if err := s.peer.transport.WritePacket(buf.Bytes()); err != nil {
@@ -355,10 +369,12 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 	var outgoingHs, incomingHs *handshake
 	var err error
 
-	if s.handshake != nil {
-		logDebug(s.peer, incomingRec, "processing handshake packet, current state: %s", s.handshake.state)
-	} else {
-		logDebug(s.peer, incomingRec, "processing handshake packet, current state: nil")
+	if DebugHandshake {
+		if s.handshake != nil {
+			logDebug(s.peer, incomingRec, "processing handshake packet, current state: %s", s.handshake.state)
+		} else {
+			logDebug(s.peer, incomingRec, "processing handshake packet, current state: nil")
+		}
 	}
 
 	switch incomingRec.ContentType {
@@ -598,16 +614,19 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 
 			var hsArr []*handshake
 
-			// TODO-CID: check if client enabled CID, figure out length of CID?
-			if s.handshake.cidEnabled {
+			if s.handshake.cidEnabled && s.listener.cidLen > 0 {
 				// if we receive a CID from the client, use the same length CID.
-				cidLen := len(s.peerCid)
-				if cidLen == 0 {
-					cidLen = s.listener.cidLen
-				}
+				cidLen := s.listener.cidLen
+				/*if s.peerCid != nil {
+					cidLen = len(s.peerCid)
+				}*/
 				s.cid = randomBytes(cidLen)
+
 				// first byte of server generated CID is always its length
 				s.cid[0] = byte(cidLen - 1)
+				s.listener.mux.Lock()
+				s.listener.peerCids[string(s.cid)] = s.peer
+				s.listener.mux.Unlock()
 				logDebug(s.peer, incomingRec, "server cid generated: %X", s.cid)
 			}
 

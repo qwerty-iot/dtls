@@ -5,6 +5,7 @@
 package dtls
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -20,6 +21,7 @@ type udpEndpoint struct {
 type udpTransport struct {
 	socket      *net.UDPConn
 	readTimeout time.Duration
+	shutdown    bool
 }
 
 func newUdpTransport(listenAddress string, readTimeout time.Duration) (*udpTransport, error) {
@@ -50,6 +52,7 @@ func (u *udpTransport) Local() string {
 }
 
 func (u *udpTransport) Shutdown() error {
+	u.shutdown = true
 	return u.socket.Close()
 }
 
@@ -60,6 +63,9 @@ func (u *udpTransport) ReadPacket() ([]byte, TransportEndpoint, error) {
 
 	length, from, err := u.socket.ReadFromUDP(buffer)
 	if err != nil {
+		if u.shutdown {
+			return nil, nil, errors.New("shutdown")
+		}
 		logError(nil, nil, err, "failed to receive packet")
 		return nil, nil, err
 	}

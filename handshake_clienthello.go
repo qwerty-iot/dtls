@@ -91,7 +91,9 @@ func (h *clientHello) Parse(rdr *byteReader, size int) error {
 			if extType == 254 {
 				h.cidEnable = true
 				cidLen := rdr.GetUint8()
-				h.cid = rdr.GetBytes(int(cidLen))
+				if cidLen > 0 {
+					h.cid = rdr.GetBytes(int(cidLen))
+				}
 			} else {
 				rdr.GetBytes(int(extLen))
 			}

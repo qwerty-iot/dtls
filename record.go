@@ -51,7 +51,8 @@ func parseRecord(raw []byte) (*record, []byte, error) {
 	if r.ContentType == ContentType_Appdata_Cid {
 		cidLen := br.GetUint8()
 		if cidLen > 0 {
-			r.Cid = br.GetBytes(int(cidLen))
+			cid := br.GetBytes(int(cidLen))
+			r.Cid = append([]byte{cidLen}, cid...)
 		}
 	}
 	r.Length = br.GetUint16()
