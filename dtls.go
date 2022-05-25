@@ -96,7 +96,7 @@ func receiver(l *Listener) {
 			}
 		}
 		if !found {
-			p, _ = l.addServerPeer(peer, cid)
+			p, _ = l.addServerPeer(peer, cid, false)
 			logDebug(p, nil, "received from unknown endpoint")
 		} else {
 			prev := p.touch()
@@ -258,7 +258,7 @@ func (l *Listener) RemovePeerByAddr(addr string, alertDesc uint8) {
 	return
 }
 
-func (l *Listener) addServerPeer(tpeer TransportEndpoint, cid []byte) (*Peer, error) {
+func (l *Listener) addServerPeer(tpeer TransportEndpoint, cid []byte, requireRestore bool) (*Peer, error) {
 	peer := &Peer{transport: tpeer, activity: time.Now(), transportQueue: make(chan []byte, 128)}
 	peer.session = newServerSession(peer)
 	peer.session.listener = l
@@ -269,6 +269,8 @@ func (l *Listener) addServerPeer(tpeer TransportEndpoint, cid []byte) (*Peer, er
 		if len(raw) != 0 {
 			peer.session.restore(raw)
 			logDebug(peer, nil, "session imported")
+		} else if requireRestore {
+			return nil, errors.New("dtls: session not found")
 		}
 	}
 
@@ -360,7 +362,11 @@ func (l *Listener) FindPeer(addr string) (*Peer, error) {
 	if found {
 		return p, nil
 	} else {
-		return nil, errors.New("dtls: peer [" + addr + "] not found")
+		p, err := l.addServerPeer(l.transport.NewEndpoint(addr), nil, true)
+		if err != nil {
+			return nil, errors.New("dtls: peer [" + addr + "] not found")
+		}
+		return p, nil
 	}
 }
 
