@@ -480,7 +480,8 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			}
 		case handshakeType_ServerHello:
 			s.handshake.server.RandomTime, s.handshake.server.Random = incomingHs.ServerHello.GetRandom()
-			if reflect.DeepEqual(s.Id, incomingHs.ServerHello.GetSessionId()) {
+			sid := incomingHs.ServerHello.GetSessionId()
+			if len(sid) != 0 && reflect.DeepEqual(s.Id, sid) {
 				//resuming session
 				s.handshake.resumed = true
 			} else {
