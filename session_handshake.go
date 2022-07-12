@@ -340,6 +340,14 @@ func (s *session) generateCookie() {
 func (s *session) startHandshake() error {
 	reqHs := newHandshake(handshakeType_ClientHello)
 	reqHs.ClientHello.Init(s.Id, s.handshake.client.Random, nil, s.listener.cipherSuites, s.listener.compressionMethods)
+	if s.listener.cidLen > 0 {
+		s.cid = randomBytes(s.listener.cidLen)
+		s.cid[0] = byte(s.listener.cidLen - 1)
+		s.listener.mux.Lock()
+		s.listener.peers[string(s.cid)] = s.peer
+		s.listener.mux.Unlock()
+		reqHs.ClientHello.EnableCid(s.cid)
+	}
 
 	err := s.writeHandshake(reqHs)
 	if err != nil {
@@ -626,7 +634,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 				// first byte of server generated CID is always its length
 				s.cid[0] = byte(cidLen - 1)
 				s.listener.mux.Lock()
-				s.listener.peerCids[string(s.cid)] = s.peer
+				s.listener.peers[string(s.cid)] = s.peer
 				s.listener.mux.Unlock()
 				logDebug(s.peer, incomingRec, "server cid generated: %X", s.cid)
 			}
@@ -694,6 +702,9 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			err = outgoingHs.ClientHello.Init(s.Id, s.handshake.client.Random, s.handshake.cookie, s.listener.cipherSuites, s.listener.compressionMethods)
 			if err != nil {
 				break
+			}
+			if len(s.cid) > 0 {
+				outgoingHs.ClientHello.EnableCid(s.cid)
 			}
 			err = s.writeHandshake(outgoingHs)
 			if err != nil {

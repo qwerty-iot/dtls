@@ -18,7 +18,6 @@ const DtlsExtConnectionId = uint16(254)
 type Listener struct {
 	transport          Transport
 	peers              map[string]*Peer
-	peerCids           map[string]*Peer
 	readQueue          chan *msg
 	mux                sync.Mutex
 	wg                 sync.WaitGroup
@@ -50,7 +49,7 @@ func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, erro
 		return nil, err
 	}
 
-	l := &Listener{transport: utrans, peers: make(map[string]*Peer), peerCids: make(map[string]*Peer), readQueue: make(chan *msg, 128), maxPacketSize: 1400, maxHandshakeSize: 1200}
+	l := &Listener{transport: utrans, peers: make(map[string]*Peer), readQueue: make(chan *msg, 128), maxPacketSize: 1400, maxHandshakeSize: 1200}
 	go sweeper(l)
 	l.wg.Add(1)
 	go receiver(l)
@@ -81,12 +80,15 @@ func receiver(l *Listener) {
 
 		l.mux.Lock()
 		p, found := l.peers[peer.String()]
+		if p.RemoteAddr() != peer.String() {
+			logDebug(p, nil, "peer address mismatch [%s]!=[%s]", p.RemoteAddr(), peer.String())
+		}
 
 		var cid []byte
 		if !found {
 			cid = peekCidFromRecord(data)
 			if cid != nil {
-				p, found = l.peerCids[string(cid)]
+				p, found = l.peers[string(cid)]
 				if found {
 					p.transport = peer
 					delete(l.peers, peer.String())
@@ -241,6 +243,9 @@ func (l *Listener) RemovePeer(peer *Peer, alertDesc uint8) {
 		peer.Close(alertDesc)
 	}
 	delete(l.peers, peer.RemoteAddr())
+	if peer.SessionCid() != nil {
+		delete(l.peers, string(peer.SessionCid()))
+	}
 	l.mux.Unlock()
 	return
 }
@@ -278,7 +283,7 @@ func (l *Listener) addServerPeer(tpeer TransportEndpoint, cid []byte, requireRes
 	//l.mux.Lock()
 	l.peers[peer.RemoteAddr()] = peer
 	if peer.session.cid != nil {
-		l.peerCids[string(peer.session.cid)] = peer
+		l.peers[string(peer.session.cid)] = peer
 	}
 	//l.mux.Unlock()
 	return peer, nil
