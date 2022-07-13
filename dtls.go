@@ -81,7 +81,7 @@ func receiver(l *Listener) {
 		l.mux.Lock()
 		p, found := l.peers[peer.String()]
 		if p.RemoteAddr() != peer.String() {
-			logDebug(p, nil, "peer address mismatch [%s]!=[%s]", p.RemoteAddr(), peer.String())
+			logDebug(p, nil, "peer address mismatch old:[%s]!= new:[%s]", p.RemoteAddr(), peer.String())
 		}
 
 		var cid []byte
@@ -90,10 +90,8 @@ func receiver(l *Listener) {
 			if cid != nil {
 				p, found = l.peers[string(cid)]
 				if found {
-					p.transport = peer
-					delete(l.peers, peer.String())
-					l.peers[peer.String()] = p
-					logDebug(p, nil, "peer updated from cid")
+					logDebug(p, nil, "peer updated from cid old:[%s]!= new:[%s]", p.RemoteAddr(), peer.String())
+					l.UpdatePeer(p, peer, false)
 				}
 			}
 		}
@@ -258,6 +256,9 @@ func (l *Listener) RemovePeerByAddr(addr string, alertDesc uint8) {
 			p.Close(alertDesc)
 		}
 		delete(l.peers, p.RemoteAddr())
+		if p.SessionCid() != nil {
+			delete(l.peers, string(p.SessionCid()))
+		}
 	}
 	l.mux.Unlock()
 	return
@@ -298,6 +299,18 @@ type PeerParams struct {
 
 func (l *Listener) AddPeer(addr string, identity []byte) (*Peer, error) {
 	return l.AddPeerWithParams(&PeerParams{Addr: addr, Identity: identity, HandshakeTimeout: time.Second * 20})
+}
+
+func (l *Listener) UpdatePeer(p *Peer, trans TransportEndpoint, lock bool) {
+	if lock {
+		l.mux.Lock()
+	}
+	delete(l.peers, p.RemoteAddr())
+	p.transport = trans
+	l.peers[p.RemoteAddr()] = p
+	if lock {
+		l.mux.Unlock()
+	}
 }
 
 func (l *Listener) AddPeerWithParams(params *PeerParams) (*Peer, error) {
