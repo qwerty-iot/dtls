@@ -138,7 +138,6 @@ func processor(l *Listener, p *Peer) {
 			for {
 				rec, rem, err := p.session.parseRecord(data)
 				if err != nil {
-					logWarn(p, rec, err, "error parsing record")
 					l.RemovePeer(p, AlertDesc_DecodeError)
 					break
 				}

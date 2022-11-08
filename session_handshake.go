@@ -19,12 +19,10 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 	rec, rem, err := parseRecord(data)
 	if err != nil {
 		if len(data) > 64 {
-			logDebug(s.peer, nil, "dtls: bad packet: [%X](%d)", data[:64], len(data))
+			logWarn(s.peer, nil, err, "dtls: bad packet: [%X](%d)", data[:64], len(data))
 		} else {
-			logDebug(s.peer, nil, "dtls: bad packet: [%X]", data)
+			logWarn(s.peer, nil, err, "dtls: bad packet: [%X](%d)", data, len(data))
 		}
-
-		logWarn(s.peer, nil, err, "dtls: parse record")
 		return nil, nil, err
 	}
 
