@@ -28,10 +28,10 @@ func (s *CipherCcmSuite) TestEncryption() {
 	data := randomBytes(50)
 
 	ccm := CipherCcm{peer: nil}
-	cipherText, err := ccm.Encrypt(&record{Epoch: 5, Sequence: 10, ContentType: 1, Data: data}, key, iv, nil, nil)
+	cipherText, err := ccm.Encrypt(nil, &record{Epoch: 5, Sequence: 10, ContentType: 1, Data: data}, key, iv, nil)
 	assert.Nil(s.T(), err)
 
-	clearText, err := ccm.Decrypt(&record{Epoch: 5, Sequence: 10, ContentType: 1, Data: cipherText}, key, iv, nil)
+	clearText, err := ccm.Decrypt(nil, &record{Epoch: 5, Sequence: 10, ContentType: 1, Data: cipherText}, key, iv, nil)
 	assert.Nil(s.T(), err)
 
 	assert.Equal(s.T(), hex.EncodeToString(data), hex.EncodeToString(clearText))

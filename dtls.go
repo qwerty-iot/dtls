@@ -13,7 +13,8 @@ import (
 	"time"
 )
 
-const DtlsExtConnectionId = uint16(254)
+const DtlsExtConnectionIdLegacy = uint16(254)
+const DtlsExtConnectionId = uint16(54)
 
 type Listener struct {
 	transport          Transport

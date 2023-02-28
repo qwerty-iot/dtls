@@ -58,7 +58,7 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 			mac = s.keyBlock.ClientMac
 		}
 
-		clearText, err := s.cipher.Decrypt(rec, key, iv, mac, s.cid)
+		clearText, err := s.cipher.Decrypt(s, rec, key, iv, mac)
 		if s.cid != nil {
 			// DTLSInnerPlaintext
 			clearText = bytes.TrimRight(clearText, "\x00")
@@ -277,7 +277,7 @@ func (s *session) writeRecord(rec *record) error {
 			rec.ContentType = ContentType_Appdata_Cid
 			rec.Cid = s.peerCid
 		}
-		cipherText, err := s.cipher.Encrypt(rec, key, iv, mac, s.peerCid)
+		cipherText, err := s.cipher.Encrypt(s, rec, key, iv, mac)
 		if err != nil {
 			return err
 		}
@@ -310,7 +310,7 @@ func (s *session) writeRecords(recs []*record) error {
 				key = s.keyBlock.ServerWriteKey
 				mac = s.keyBlock.ServerMac
 			}
-			cipherText, err := s.cipher.Encrypt(rec, key, iv, mac, s.peerCid)
+			cipherText, err := s.cipher.Encrypt(s, rec, key, iv, mac)
 			if err != nil {
 				return err
 			}
@@ -339,12 +339,13 @@ func (s *session) startHandshake() error {
 	reqHs := newHandshake(handshakeType_ClientHello)
 	reqHs.ClientHello.Init(s.Id, s.handshake.client.Random, nil, s.listener.cipherSuites, s.listener.compressionMethods)
 	if s.listener.cidLen > 0 {
+		s.cidVersion = DtlsExtConnectionId
 		s.cid = randomBytes(s.listener.cidLen)
 		s.cid[0] = byte(s.listener.cidLen - 1)
 		s.listener.mux.Lock()
 		s.listener.peers[string(s.cid)] = s.peer
 		s.listener.mux.Unlock()
-		reqHs.ClientHello.EnableCid(s.cid)
+		reqHs.ClientHello.EnableCid(s.cid, s.cidVersion)
 	}
 
 	err := s.writeHandshake(reqHs)
@@ -432,6 +433,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 
 				s.handshake.client.RandomTime, s.handshake.client.Random = incomingHs.ClientHello.GetRandom()
 				s.selectedCipherSuite = incomingHs.ClientHello.SelectCipherSuite(s.listener.cipherSuites)
+
 				s.cipher = getCipher(s.peer, s.selectedCipherSuite)
 				if s.cipher == nil {
 					s.handshake.state = "failed"
@@ -440,6 +442,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 				}
 				if incomingHs.ClientHello.cidEnable {
 					s.handshake.cidEnabled = true
+					s.cidVersion = incomingHs.ClientHello.cidVersion
 					s.peerCid = incomingHs.ClientHello.cid
 				}
 
@@ -638,7 +641,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			}
 
 			outgoingHs = newHandshake(handshakeType_ServerHello)
-			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.selectedCipherSuite)
+			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.cidVersion, s.selectedCipherSuite)
 
 			hsArr = append(hsArr, outgoingHs)
 
@@ -674,7 +677,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 		case "recv-clienthello-resumed":
 
 			outgoingHs = newHandshake(handshakeType_ServerHello)
-			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.selectedCipherSuite)
+			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.cidVersion, s.selectedCipherSuite)
 			err = s.writeHandshake(outgoingHs)
 
 			s.initKeyBlock()
@@ -702,7 +705,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 				break
 			}
 			if len(s.cid) > 0 {
-				outgoingHs.ClientHello.EnableCid(s.cid)
+				outgoingHs.ClientHello.EnableCid(s.cid, s.cidVersion)
 			}
 			err = s.writeHandshake(outgoingHs)
 			if err != nil {

@@ -27,6 +27,7 @@ type session struct {
 	peerPublicKey       []byte
 	peerCid             []byte
 	cid                 []byte
+	cidVersion          uint16
 	epoch               uint16
 	sequenceNumber0     uint64
 	sequenceNumber1     uint64
@@ -82,14 +83,14 @@ func newSessionHandshake(ts time.Time) *sessionHandshake {
 
 func newClientSession(peer *Peer) *session {
 	now := time.Now()
-	session := &session{Type: SessionType_Client, started: now, handshake: newSessionHandshake(now), peer: peer}
-	return session
+	sess := &session{Type: SessionType_Client, started: now, handshake: newSessionHandshake(now), peer: peer}
+	return sess
 }
 
 func newServerSession(peer *Peer) *session {
 	now := time.Now()
-	session := &session{Type: SessionType_Server, started: now, peer: peer, handshake: newSessionHandshake(now), Id: randomBytes(32)}
-	return session
+	sess := &session{Type: SessionType_Server, started: now, peer: peer, handshake: newSessionHandshake(now), Id: randomBytes(32)}
+	return sess
 }
 
 func (s *session) updateHash(data []byte) {

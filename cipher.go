@@ -31,11 +31,15 @@ func (cs CipherSuite) NeedCert() bool {
 	return false
 }
 
+func (cs CipherSuite) String() string {
+	return cipherSuiteToString(cs)
+}
+
 type Cipher interface {
 	GetPrfSize() int
 	GenerateKeyBlock(masterSecret []byte, rawKeyBlock []byte) *KeyBlock
-	Encrypt(rec *record, key []byte, iv []byte, mac []byte, cid []byte) ([]byte, error)
-	Decrypt(rec *record, key []byte, iv []byte, mac []byte, cid []byte) ([]byte, error)
+	Encrypt(s *session, rec *record, key []byte, iv []byte, mac []byte) ([]byte, error)
+	Decrypt(s *session, rec *record, key []byte, iv []byte, mac []byte) ([]byte, error)
 }
 
 func getCipher(peer *Peer, cipherSuite CipherSuite) Cipher {
@@ -63,5 +67,5 @@ func cipherSuiteToString(c CipherSuite) string {
 	case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256:
 		return "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256(0xC023)"
 	}
-	return fmt.Sprintf("Unknown(0x%X)", c)
+	return fmt.Sprintf("Unknown(0x%X)", uint16(c))
 }

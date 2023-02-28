@@ -19,15 +19,17 @@ type serverHello struct {
 	cipherSuite       CipherSuite
 	compressionMethod CompressionMethod
 	cid               []byte
+	cidVersion        uint16
 }
 
-func (h *serverHello) Init(randomBytes []byte, sessionId []byte, cid []byte, cipherSuite CipherSuite) {
+func (h *serverHello) Init(randomBytes []byte, sessionId []byte, cid []byte, cidVersion uint16, cipherSuite CipherSuite) {
 	h.version = DtlsVersion12
 	h.randomBytes = randomBytes
 	h.randomTime = binary.BigEndian.Uint32(h.randomBytes[:4])
 	h.sessionId = sessionId
 	h.sessionIdLen = uint8(len(h.sessionId))
 	h.cid = cid
+	h.cidVersion = cidVersion
 	h.cipherSuite = cipherSuite
 	h.compressionMethod = CompressionMethod_Null
 }
@@ -49,10 +51,16 @@ func (h *serverHello) Parse(rdr *byteReader, size int) error {
 		for read := 0; read < int(extTotalLen); {
 			extType := rdr.GetUint16()
 			extLen := rdr.GetUint16()
-			if extType == 254 {
+			switch extType {
+			case DtlsExtConnectionId:
 				cidLen := rdr.GetUint8()
 				h.cid = rdr.GetBytes(int(cidLen))
-			} else {
+				h.cidVersion = DtlsExtConnectionId
+			case DtlsExtConnectionIdLegacy:
+				cidLen := rdr.GetUint8()
+				h.cid = rdr.GetBytes(int(cidLen))
+				h.cidVersion = DtlsExtConnectionIdLegacy
+			default:
 				rdr.GetBytes(int(extLen))
 			}
 			read += 4 + int(extLen)
@@ -75,7 +83,7 @@ func (h *serverHello) Bytes() []byte {
 	ext := newByteWriter()
 
 	if h.cid != nil {
-		ext.PutUint16(DtlsExtConnectionId)
+		ext.PutUint16(h.cidVersion)
 		ext.PutUint16(uint16(len(h.cid) + 1))
 		if len(h.cid) > 0 {
 			ext.PutUint8(uint8(len(h.cid)))

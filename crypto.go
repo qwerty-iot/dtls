@@ -31,17 +31,28 @@ func newNonceFromBytes(iv []byte, data []byte) []byte {
 	return nonce.Bytes()
 }
 
-func newAad(epoch uint16, seq uint64, msgType uint8, cid []byte, dataLen uint16) []byte {
+func newAad(s *session, epoch uint16, seq uint64, msgType uint8, cid []byte, dataLen uint16) []byte {
 	w := newByteWriter()
 	if cid != nil {
-		// placeholder
-		w.PutUint16(epoch)
-		w.PutUint48(seq)
-		w.PutUint8(msgType)
-		w.PutUint16(DtlsVersion12)
-		w.PutBytes(cid)
-		w.PutUint8(uint8(len(cid)))
-		w.PutUint16(dataLen)
+		if s.cidVersion == DtlsExtConnectionIdLegacy {
+			w.PutUint16(epoch)
+			w.PutUint48(seq)
+			w.PutUint8(msgType)
+			w.PutUint16(DtlsVersion12)
+			w.PutBytes(cid)
+			w.PutUint8(uint8(len(cid)))
+			w.PutUint16(dataLen)
+		} else if s.cidVersion == DtlsExtConnectionId {
+			w.PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+			w.PutUint8(msgType)
+			w.PutUint8(uint8(len(cid)))
+			w.PutUint8(msgType)
+			w.PutUint16(DtlsVersion12)
+			w.PutUint16(epoch)
+			w.PutUint48(seq)
+			w.PutBytes(cid)
+			w.PutUint16(dataLen)
+		}
 	} else {
 		w.PutUint16(epoch)
 		w.PutUint48(seq)

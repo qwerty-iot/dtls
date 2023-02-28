@@ -30,10 +30,10 @@ func (c CipherCcm) GenerateKeyBlock(masterSecret []byte, rawKeyBlock []byte) *Ke
 	return &KeyBlock{MasterSecret: masterSecret, ClientWriteKey: rawKeyBlock[0:16], ServerWriteKey: rawKeyBlock[16:32], ClientIV: rawKeyBlock[32:36], ServerIV: rawKeyBlock[36:40]}
 }
 
-func (c CipherCcm) Encrypt(rec *record, key []byte, iv []byte, mac []byte, cid []byte) ([]byte, error) {
+func (c CipherCcm) Encrypt(s *session, rec *record, key []byte, iv []byte, mac []byte) ([]byte, error) {
 
 	nonce := newNonce(iv, rec.Epoch, rec.Sequence)
-	aad := newAad(rec.Epoch, rec.Sequence, uint8(rec.ContentType), cid, uint16(len(rec.Data)))
+	aad := newAad(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), s.peerCid, uint16(len(rec.Data)))
 
 	cipher, err := aes.NewCipher(key)
 	if err != nil {
@@ -70,9 +70,9 @@ func (c CipherCcm) Encrypt(rec *record, key []byte, iv []byte, mac []byte, cid [
 	return cipherText, nil
 }
 
-func (c CipherCcm) Decrypt(rec *record, key []byte, iv []byte, mac []byte, cid []byte) ([]byte, error) {
+func (c CipherCcm) Decrypt(s *session, rec *record, key []byte, iv []byte, mac []byte) ([]byte, error) {
 	nonce := newNonceFromBytes(iv, rec.Data[:8])
-	aad := newAad(rec.Epoch, rec.Sequence, uint8(rec.ContentType), cid, uint16(len(rec.Data)-16))
+	aad := newAad(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), s.cid, uint16(len(rec.Data)-16))
 	data := rec.Data[8:]
 
 	cipher, err := aes.NewCipher(key)

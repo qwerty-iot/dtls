@@ -26,6 +26,7 @@ type clientHello struct {
 	compressionMethodsLen uint8
 	compressionMethods    []CompressionMethod
 	cidEnable             bool
+	cidVersion            uint16
 	cid                   []byte
 }
 
@@ -51,8 +52,9 @@ func (h *clientHello) Init(sessionId []byte, randomBytes []byte, cookie []byte, 
 	return nil
 }
 
-func (h *clientHello) EnableCid(cid []byte) {
+func (h *clientHello) EnableCid(cid []byte, version uint16) {
 	h.cidEnable = true
+	h.cidVersion = version
 	h.cid = cid
 }
 
@@ -88,13 +90,22 @@ func (h *clientHello) Parse(rdr *byteReader, size int) error {
 		for read := 0; read < int(extTotalLen); {
 			extType := rdr.GetUint16()
 			extLen := rdr.GetUint16()
-			if extType == 254 {
+			switch extType {
+			case DtlsExtConnectionId:
 				h.cidEnable = true
+				h.cidVersion = DtlsExtConnectionId
 				cidLen := rdr.GetUint8()
 				if cidLen > 0 {
 					h.cid = rdr.GetBytes(int(cidLen))
 				}
-			} else {
+			case DtlsExtConnectionIdLegacy:
+				h.cidEnable = true
+				h.cidVersion = DtlsExtConnectionIdLegacy
+				cidLen := rdr.GetUint8()
+				if cidLen > 0 {
+					h.cid = rdr.GetBytes(int(cidLen))
+				}
+			default:
 				rdr.GetBytes(int(extLen))
 			}
 			read += 4 + int(extLen)
@@ -131,7 +142,7 @@ func (h *clientHello) Bytes() []byte {
 	ext := newByteWriter()
 
 	if h.cidEnable {
-		ext.PutUint16(DtlsExtConnectionId)
+		ext.PutUint16(h.cidVersion)
 		ext.PutUint16(uint16(len(h.cid) + 1))
 		ext.PutUint8(uint8(len(h.cid)))
 		if len(h.cid) > 0 {

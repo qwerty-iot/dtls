@@ -3,9 +3,10 @@ package dtls
 import (
 	"encoding/hex"
 	"fmt"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"testing"
 )
 
 func TestCipherCbcSuite(t *testing.T) {
@@ -28,10 +29,10 @@ func (s *CipherCbcSuite) TestEncryption() {
 	data := randomBytes(50)
 
 	cbc := CipherCBC{peer: nil}
-	cipherText, err := cbc.Encrypt(&record{Epoch: 5, Sequence: 10, ContentType: 1, Data: data}, key, iv, mac)
+	cipherText, err := cbc.Encrypt(nil, &record{Epoch: 5, Sequence: 10, ContentType: 1, Data: data}, key, iv, mac)
 	assert.Nil(s.T(), err)
 
-	clearText, err := cbc.Decrypt(&record{Epoch: 5, Sequence: 10, ContentType: 1, Data: cipherText}, key, iv, mac)
+	clearText, err := cbc.Decrypt(nil, &record{Epoch: 5, Sequence: 10, ContentType: 1, Data: cipherText}, key, iv, mac)
 	assert.Nil(s.T(), err)
 
 	assert.Equal(s.T(), hex.EncodeToString(data), hex.EncodeToString(clearText))
