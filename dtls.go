@@ -81,7 +81,7 @@ func receiver(l *Listener) {
 
 		l.mux.Lock()
 		p, found := l.peers[peer.String()]
-		if p.RemoteAddr() != peer.String() {
+		if found && p.RemoteAddr() != peer.String() {
 			logDebug(p, nil, "peer address mismatch old:[%s]!= new:[%s]", p.RemoteAddr(), peer.String())
 		}
 

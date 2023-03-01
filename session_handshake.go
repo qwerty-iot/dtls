@@ -59,7 +59,7 @@ func (s *session) parseRecord(data []byte) (*record, []byte, error) {
 		}
 
 		clearText, err := s.cipher.Decrypt(s, rec, key, iv, mac)
-		if s.cid != nil {
+		if s.cid != nil && err == nil {
 			// DTLSInnerPlaintext
 			clearText = bytes.TrimRight(clearText, "\x00")
 			rec.ContentType = ContentType(clearText[len(clearText)-1])
