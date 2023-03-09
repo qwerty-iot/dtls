@@ -74,10 +74,12 @@ func (u *udpTransport) ReadPacket() ([]byte, TransportEndpoint, error) {
 		logError(nil, nil, err, "packet too large")
 		return nil, nil, nil
 	}
+	sniffActivity(u.Type(), SniffRead, from.String(), u.Local(), buffer[:length])
 	return buffer[:length], &udpEndpoint{addr: from, handle: u}, nil
 }
 
 func (p *udpEndpoint) WritePacket(data []byte) error {
+	sniffActivity(p.handle.Type(), SniffWrite, p.handle.Local(), p.addr.String(), data)
 	_, err := p.handle.socket.WriteToUDP(data, p.addr)
 	return err
 }
