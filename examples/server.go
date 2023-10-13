@@ -2,8 +2,8 @@ package main
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
+	"github.com/goccy/go-json"
 	"os"
 	"os/signal"
 	"syscall"

@@ -5,7 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"github.com/goccy/go-json"
 )
 
 var storeKey []byte
