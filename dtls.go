@@ -380,11 +380,12 @@ func (l *Listener) AddCompressionMethod(compressionMethod CompressionMethod) {
 func (l *Listener) FindPeer(addr string) (*Peer, error) {
 	l.mux.Lock()
 	p, found := l.peers[addr]
-	l.mux.Unlock()
 	if found {
+		l.mux.Unlock()
 		return p, nil
 	} else {
 		p, err := l.addServerPeer(l.transport.NewEndpoint(addr), nil, true)
+		l.mux.Unlock()
 		if err != nil {
 			return nil, errors.New("dtls: peer [" + addr + "] not found")
 		}
