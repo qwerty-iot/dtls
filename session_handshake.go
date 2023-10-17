@@ -802,6 +802,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 				HandshakeCompleteCallback(s.peer, s.peerPublicKey, time.Now().Sub(s.started), nil)
 			}
 		}
+		s.handshake.completed = time.Now()
 	FORFIN:
 		for {
 			select {

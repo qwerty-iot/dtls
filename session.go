@@ -65,6 +65,7 @@ type sessionHandshake struct {
 		Random     []byte
 	}
 	lastSeqRecv uint16
+	completed   time.Time
 }
 
 func newSessionHandshake(ts time.Time) *sessionHandshake {

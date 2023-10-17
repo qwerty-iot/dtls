@@ -171,6 +171,10 @@ func processor(l *Listener, p *Peer) {
 						l.readQueue <- &msg{rec.Data, p}
 					}
 					//TODO handle case where queue is full and not being read
+					if p.session.handshake != nil && time.Now().After(p.session.handshake.completed.Add(time.Minute*-2)) {
+						// save the handshake data for 2 minutes after establishing a session incase any re-handshaking needs to occur
+						p.session.handshake = nil
+					}
 				}
 				if rem == nil || len(rem) == 0 {
 					break
@@ -265,7 +269,7 @@ func (l *Listener) RemovePeerByAddr(addr string, alertDesc uint8) {
 }
 
 func (l *Listener) addServerPeer(tpeer TransportEndpoint, cid []byte, requireRestore bool) (*Peer, error) {
-	peer := &Peer{transport: tpeer, activity: time.Now(), transportQueue: make(chan []byte, 128)}
+	peer := &Peer{transport: tpeer, activity: time.Now(), transportQueue: make(chan []byte, 16)}
 	peer.session = newServerSession(peer)
 	peer.session.listener = l
 	peer.session.cid = cid
