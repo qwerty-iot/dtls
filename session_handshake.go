@@ -383,6 +383,9 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			logDebug(s.peer, incomingRec, "processing handshake packet, current state: nil")
 		}
 	}
+	if s.handshake == nil {
+		s.handshake = newSessionHandshake(time.Now())
+	}
 
 	switch incomingRec.ContentType {
 	case ContentType_Handshake:
