@@ -3,8 +3,8 @@ module github.com/qwerty-iot/dtls/v2
 go 1.20
 
 require (
-	github.com/goccy/go-json v0.10.2
-	github.com/stretchr/testify v1.8.4
+	github.com/goccy/go-json v0.10.3
+	github.com/stretchr/testify v1.9.0
 )
 
 require (
