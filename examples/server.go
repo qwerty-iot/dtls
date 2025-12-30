@@ -3,12 +3,11 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"github.com/goccy/go-json"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
-	"github.com/goccy/go-json"
 
 	"github.com/qwerty-iot/dtls/v2"
 )
@@ -24,7 +23,6 @@ type Backup struct {
 var sessions []Backup
 
 func SessionImportCallback(peer *dtls.Peer) string {
-	return ""
 	if cid := peer.SessionCid(); cid != nil {
 		for _, s := range sessions {
 			if string(s.Cid) == string(cid) {
@@ -57,7 +55,7 @@ func main() {
 	}()
 
 	dtls.SetLogLevel("debug")
-	dtls.DebugAll()
+	//dtls.DebugAll()
 	dtls.SetExportSecret("foobar")
 	dtls.SessionImportCallback = SessionImportCallback
 
@@ -79,9 +77,8 @@ func main() {
 		listener.AddCipherSuite(dtls.CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8)
 		listener.SetCertificate(*cert)
 	}*/
-	//listener.AddCipherSuite(dtls.CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
-	//listener.AddCipherSuite(dtls.CipherSuite_TLS_PSK_WITH_AES_128_GCM_SHA256)
-	listener.AddCipherSuite(dtls.CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256)
+	listener.AddCipherSuite(dtls.CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
+	//listener.AddCipherSuite(dtls.CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256)
 
 	listener.AddCompressionMethod(dtls.CompressionMethod_Null)
 

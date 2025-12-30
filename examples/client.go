@@ -51,15 +51,7 @@ func main() {
 
 	go ClientReader(listener)
 
-	var sessionId []byte
-	if len(os.Args) > 1 {
-		sessionId, _ = hex.DecodeString(os.Args[1])
-		fmt.Printf("resuming sessionId: " + hex.EncodeToString(sessionId))
-	}
-
-	p, _ := listener.AddPeerWithParams(&dtls.PeerParams{Addr: "127.0.0.1:4433", Identity: []byte("myid"), SessionId: sessionId, HandshakeTimeout: time.Second * 20})
-
-	fmt.Printf("sessionId: " + hex.EncodeToString(p.SessionId()))
+	p, _ := listener.AddPeerWithParams(&dtls.PeerParams{Addr: "127.0.0.1:4433", Identity: []byte("myid"), HandshakeTimeout: time.Second * 20})
 
 	p.Write([]byte("hello world"))
 
