@@ -108,8 +108,8 @@ func main() {
 	*/
 
 	mks := dtls.NewKeystoreInMemory()
-	psk, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f")
-	mks.AddKey([]byte("mbedtls"), psk)
+	psk, _ := hex.DecodeString("00112233445566778899AABBCCDDEEFF")
+	mks.AddKey([]byte("myid"), psk)
 	dtls.SetKeyStores([]dtls.Keystore{mks})
 
 	go Reader(listener)

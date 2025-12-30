@@ -90,8 +90,22 @@ func (h *handshake) FragmentBytes(startingByte int, maxSize int) []byte {
 	return buf.Bytes()
 }
 
-func (h *handshake) IsFragment() bool {
+func (h *handshake) IsFragmented() bool {
 	return len(h.Fragment) != 0
+}
+
+func (h *handshake) IsHashable() bool {
+	switch h.Header.HandshakeType {
+	case handshakeType_ClientHello:
+		if h.ClientHello.HasCookie() {
+			return true
+		}
+		return false
+	case handshakeType_HelloVerifyRequest:
+		return false
+	default:
+		return true
+	}
 }
 
 func (h *handshake) IsDuplicate() bool {
@@ -145,25 +159,24 @@ func parseHandshake(raw []byte) (*handshake, error) {
 
 	rdr := newByteReader(raw)
 
-	header := header{}
-	header.Parse(rdr)
+	hdr := header{}
+	hdr.Parse(rdr)
 
-	if header.Length != header.FragmentLen {
+	if hdr.Length != hdr.FragmentLen || hdr.FragmentOfs > 0 {
 		h := &handshake{}
-		h.Header = header
-		fragmentData := rdr.GetBytes(int(header.FragmentLen))
-		h.Fragment = make([]byte, 0, h.Header.Length)
+		h.Header = hdr
+		fragmentData := rdr.GetBytes(int(hdr.FragmentLen))
+		h.Fragment = fragmentData[:hdr.FragmentLen]
 		if h.Header.FragmentLen > 65535 {
 			logDebug(nil, nil, "bad handshake fragment length: %d", h.Header.FragmentLen)
 			return nil, errors.New("bad handshake fragment length")
 		}
-		copy(h.Fragment[h.Header.FragmentOfs:h.Header.FragmentOfs+h.Header.FragmentLen], fragmentData)
 		return h, nil
 	}
 
-	h := newHandshake(header.HandshakeType)
-	h.Payload.Parse(rdr, int(header.Length))
-	h.Header = header
+	h := newHandshake(hdr.HandshakeType)
+	h.Payload.Parse(rdr, int(hdr.Length))
+	h.Header = hdr
 
 	return h, nil
 }

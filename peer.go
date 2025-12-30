@@ -142,6 +142,14 @@ func (p *Peer) SessionExport() string {
 	}
 }
 
+func (p *Peer) SessionId() []byte {
+	if p.session != nil && p.session.isHandshakeDone() {
+		return p.session.Id
+	} else {
+		return nil
+	}
+}
+
 func (p *Peer) Lock() {
 	p.mux.Lock()
 }

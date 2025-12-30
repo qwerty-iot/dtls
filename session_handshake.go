@@ -6,6 +6,8 @@ package dtls
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -103,42 +105,48 @@ func (s *session) parseHandshake(rec *record) (*handshake, error) {
 		return nil, err
 	}
 
-	if s.handshake != nil {
-		if _, found := s.handshake.dedup[hs.Header.Sequence]; found && hs.Header.Sequence != 0 {
-			// dupilicate packet received, drop it.
-			hs.Header.duplicate = true
-			s.cacheHandshakeFlush(hs.Header.Sequence)
-			return hs, nil
-		} else {
-			s.handshake.dedup[hs.Header.Sequence] = true
+	if hs.IsFragmented() {
+		if s.handshake.fragmentedData == nil {
+			s.handshake.fragmentedData = make([]byte, hs.Header.Length)
 		}
-	}
-
-	if hs.IsFragment() {
-		// save fragment && restore fragment
-		if oldFragment, loaded := sessionHandshakeFragments.LoadOrStore(s.Id, hs.Fragment); loaded {
-			// existing fragment available
-			data := append(oldFragment.([]byte), hs.Fragment...)
-
-			if hs.Header.FragmentOfs+hs.Header.FragmentLen == hs.Header.Length {
-				// have complete fragement
-				hs.Header.FragmentOfs = 0
-				hs.Header.FragmentLen = hs.Header.Length
-				hs, err = parseFragments(hs.Header, data)
-				if err != nil {
-					return nil, err
-				}
-				logDebug(s.peer, rec, "re-assembled fragments")
-				s.updateHash(hs.Bytes())
-			} else {
-				sessionHandshakeFragments.Store(s.Id, data)
-				return hs, nil
+		copy(s.handshake.fragmentedData[hs.Header.FragmentOfs:hs.Header.FragmentOfs+hs.Header.FragmentLen], hs.Fragment)
+		if hs.Header.FragmentOfs+hs.Header.FragmentLen == hs.Header.Length {
+			// have complete fragement
+			hs.Fragment = nil
+			hs.Header.FragmentOfs = 0
+			hs.Header.FragmentLen = hs.Header.Length
+			hs, err = parseFragments(hs.Header, s.handshake.fragmentedData)
+			if err != nil {
+				return nil, err
 			}
+			logDebug(s.peer, rec, "re-assembled fragments")
+			s.updateHash(rec, hs, hs.Header.Bytes())
+			s.updateHash(rec, hs, s.handshake.fragmentedData)
+			s.handshake.fragmentedData = nil
 		} else {
 			return hs, nil
 		}
 	} else {
-		s.updateHash(rec.Data)
+		s.updateHash(rec, hs, rec.Data)
+	}
+
+	if s.handshake != nil && (!s.isHandshakeDone() || (s.isHandshakeDone() && hs.Header.HandshakeType != handshakeType_ClientHello)) {
+		if _, found := s.handshake.dedup[hs.Header.Sequence]; found {
+			// dupilicate packet received, drop it.
+			if hs.Header.HandshakeType == handshakeType_ClientHello && len(s.handshake.client.Random) != 0 && !reflect.DeepEqual(s.handshake.client.Random, hs.ClientHello.randomBytes) {
+				logDebug(s.peer, rec, "received client hello with new random, resetting session")
+				s.reset(rec)
+				s.resetHash(rec)
+			} else {
+				hs.Header.duplicate = true
+				if s.Type == SessionType_Server {
+					s.cacheHandshakeFlush(hs.Header.Sequence)
+				}
+				return hs, nil
+			}
+		} else {
+			s.handshake.dedup[hs.Header.Sequence] = true
+		}
 	}
 
 	if DebugHandshake {
@@ -154,10 +162,10 @@ func (s *session) writeHandshake(hs *handshake) error {
 
 	data := hs.Bytes()
 	dataLen := int(hs.Header.Length)
-	s.updateHash(data)
 
 	if dataLen > s.listener.maxHandshakeSize {
 		// need to fragment sending
+		s.updateHash(nil, hs, data)
 
 		for idx := 0; idx < dataLen/s.listener.maxHandshakeSize+1; idx++ {
 			data = hs.FragmentBytes(idx*s.listener.maxHandshakeSize, s.listener.maxHandshakeSize)
@@ -176,8 +184,9 @@ func (s *session) writeHandshake(hs *handshake) error {
 	} else {
 		rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
 
+		s.updateHash(rec, hs, data)
 		if DebugHandshake {
-			logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
+			logDebug(s.peer, rec, "write (handshake) %s", hs.Print())
 		}
 
 		s.cacheHandshake(rec)
@@ -195,16 +204,16 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 
 		data := hs.Bytes()
 		dataLen := int(hs.Header.Length)
-		s.updateHash(data)
 
 		if dataLen > s.listener.maxHandshakeSize {
 			// need to fragment sending
+			s.updateHash(nil, hs, data)
 
 			for idx := 0; idx < dataLen/s.listener.maxHandshakeSize+1; idx++ {
 				data = hs.FragmentBytes(idx*s.listener.maxHandshakeSize, s.listener.maxHandshakeSize)
 				rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
 				if DebugHandshake {
-					logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
+					logDebug(s.peer, rec, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
 				}
 				s.cacheHandshake(rec)
 				recs = append(recs, rec)
@@ -212,8 +221,9 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 		} else {
 			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
 
+			s.updateHash(rec, hs, data)
 			if DebugHandshake {
-				logDebug(s.peer, nil, "write (handshake) %s", hs.Print())
+				logDebug(s.peer, rec, "write (handshake) %s", hs.Print())
 			}
 			s.cacheHandshake(rec)
 			recs = append(recs, rec)
@@ -230,8 +240,8 @@ func (s *session) cacheHandshakeFlush(seq uint16) {
 				s.epoch = 0
 				s.sequenceNumber1 = 0
 			}
-			rec.Epoch = s.getEpoch()
-			rec.Sequence = s.getNextSequence()
+			//rec.Epoch = s.getEpoch()
+			//rec.Sequence = s.getNextSequence()
 			if rec.ContentType == ContentType_ChangeCipherSpec {
 				s.incEpoch()
 			}
@@ -331,20 +341,18 @@ func (s *session) writeRecords(recs []*record) error {
 	return s.peer.transport.WritePacket(buf.Bytes())
 }
 
-func (s *session) generateCookie() {
-	s.handshake.cookie = randomBytes(16)
+func (s *session) generateCookie(hs *handshake) {
+	h := hmac.New(sha256.New, SessionCookieKey)
+	h.Write([]byte(s.peer.RemoteAddr()))
+	h.Write(hs.ClientHello.randomBytes)
+
+	s.handshake.cookie = h.Sum(nil)[:16]
 }
 
 func (s *session) startHandshake() error {
 	reqHs := newHandshake(handshakeType_ClientHello)
 	reqHs.ClientHello.Init(s.Id, s.handshake.client.Random, nil, s.listener.cipherSuites, s.listener.compressionMethods)
 	if s.listener.cidLen > 0 {
-		s.cidVersion = DtlsExtConnectionId
-		s.cid = randomBytes(s.listener.cidLen)
-		s.cid[0] = byte(s.listener.cidLen - 1)
-		s.listener.mux.Lock()
-		s.listener.peers[string(s.cid)] = s.peer
-		s.listener.mux.Unlock()
 		reqHs.ClientHello.EnableCid(s.cid, s.cidVersion)
 	}
 
@@ -384,7 +392,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 		}
 	}
 	if s.handshake == nil {
-		s.handshake = newSessionHandshake(time.Now())
+		s.handshake = newSessionHandshake(time.Now(), s.Type)
 	}
 
 	switch incomingRec.ContentType {
@@ -394,12 +402,13 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 		if err != nil {
 			return err
 		}
-		if incomingHs.IsFragment() {
+		if incomingHs.IsFragmented() {
 			logDebug(s.peer, incomingRec, "handshake fragment received %d/%d", incomingHs.Header.FragmentOfs+incomingHs.Header.FragmentLen, incomingHs.Header.Length)
 			return nil
 		}
 
-		if incomingHs.IsDuplicate() && incomingRec.Data[0] != byte(handshakeType_ClientHello) {
+		//if incomingHs.IsDuplicate() && incomingRec.Data[0] != byte(handshakeType_ClientHello) {
+		if incomingHs.IsDuplicate() {
 			logDebug(s.peer, incomingRec, "duplicate handshake received seq: %d", incomingHs.Header.Sequence)
 			return nil
 		}
@@ -415,14 +424,19 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 		case handshakeType_ClientHello:
 			cookie := incomingHs.ClientHello.GetCookie()
 			if len(cookie) == 0 {
+				if s.isHandshakeDone() {
+					logDebug(s.peer, incomingRec, "received client hello after handshake, resetting session")
+					s.reset(incomingRec)
+					s.resetHash(incomingRec)
+				}
 				if s.handshake != nil && len(s.handshake.state) != 0 {
 					logWarn(s.peer, incomingRec, nil, "previous handshake not completed, last state: %s", s.handshake.state)
 				}
-				s.reset()
-				s.generateCookie()
+				s.generateCookie(incomingHs)
 				s.started = time.Now()
 				s.handshake.state = "recv-clienthello-initial"
 			} else {
+				s.generateCookie(incomingHs)
 				if s.handshake == nil || s.handshake.cookie == nil {
 					s.handshake.state = "failed"
 					err = errors.New("dtls: clienthello sent cookie, but we have nothing to compare against")
@@ -513,7 +527,6 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 		case handshakeType_HelloVerifyRequest:
 			if len(s.handshake.cookie) == 0 {
 				s.handshake.cookie = incomingHs.HelloVerifyRequest.GetCookie()
-				s.resetHash()
 				s.handshake.state = "recv-helloverifyrequest"
 			} else {
 				s.handshake.state = "failed"
@@ -622,7 +635,6 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			if err != nil {
 				break
 			}
-			s.resetHash()
 		case "recv-clienthello":
 
 			var hsArr []*handshake
@@ -702,6 +714,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 				break
 			}
 		case "recv-helloverifyrequest":
+
 			outgoingHs = newHandshake(handshakeType_ClientHello)
 			err = outgoingHs.ClientHello.Init(s.Id, s.handshake.client.Random, s.handshake.cookie, s.listener.cipherSuites, s.listener.compressionMethods)
 			if err != nil {
