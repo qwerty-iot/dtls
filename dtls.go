@@ -32,6 +32,7 @@ type Listener struct {
 }
 
 var SessionInactivityTimeout = time.Hour * 24
+var SessionCookieKey []byte = []byte("qwerty-iot")
 
 type msg struct {
 	data []byte
@@ -171,7 +172,7 @@ func processor(l *Listener, p *Peer) {
 						l.readQueue <- &msg{rec.Data, p}
 					}
 					//TODO handle case where queue is full and not being read
-					if p.session.handshake != nil && time.Now().After(p.session.handshake.completed.Add(time.Minute*-2)) {
+					if p.session.handshake != nil && time.Now().After(p.session.handshake.completed.Add(time.Minute*2)) {
 						// save the handshake data for 2 minutes after establishing a session incase any re-handshaking needs to occur
 						p.session.handshake = nil
 					}
@@ -327,6 +328,16 @@ func (l *Listener) AddPeerWithParams(params *PeerParams) (*Peer, error) {
 	if params.SessionId != nil && len(params.SessionId) != 0 {
 		peer.session.Id = params.SessionId
 	}
+
+	if l.cidLen > 0 {
+		peer.session.cidVersion = DtlsExtConnectionId
+		peer.session.cid = randomBytes(l.cidLen)
+		peer.session.cid[0] = byte(l.cidLen - 1)
+		peer.session.listener.mux.Lock()
+		peer.session.listener.peers[string(peer.session.cid)] = peer
+		peer.session.listener.mux.Unlock()
+	}
+
 	l.mux.Lock()
 	l.peers[peer.RemoteAddr()] = peer
 	l.mux.Unlock()

@@ -210,7 +210,7 @@ func (s *HandshakeSuite) TestServerHelloEncode() {
 	sessionId := randomBytes(32)
 
 	hs := newHandshake(handshakeType_ServerHello)
-	hs.ServerHello.Init(w.Bytes(), sessionId, CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
+	hs.ServerHello.Init(w.Bytes(), sessionId, nil, 0, CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
 	hsbytes := hs.Bytes()
 
 	handshake, err := parseHandshake(hsbytes)

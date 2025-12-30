@@ -210,6 +210,10 @@ func (h *clientHello) HasSessionId() bool {
 	return h.sessionIdLen > 0
 }
 
+func (h *clientHello) HasCookie() bool {
+	return h != nil && h.cookieLen > 0
+}
+
 func (h *clientHello) GetSessionId() []byte {
 	return h.sessionId
 }

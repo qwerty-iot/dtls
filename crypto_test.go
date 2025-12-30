@@ -3,9 +3,10 @@ package dtls
 import (
 	"encoding/hex"
 	"fmt"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"testing"
 )
 
 func TestCryptoSuite(t *testing.T) {
@@ -27,7 +28,7 @@ func (s *CryptoSuite) TestNonce() {
 }
 
 func (s *CryptoSuite) TestAad() {
-	aad := newAad(5, 10, 1, 26)
+	aad := newAad(&session{}, 5, 10, 1, nil, 26)
 	assert.Equal(s.T(), "000500000000000a01fefd001a", hex.EncodeToString(aad))
 }
 

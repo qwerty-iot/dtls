@@ -3,9 +3,10 @@ package dtls
 import (
 	"encoding/hex"
 	"fmt"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"testing"
 )
 
 func TestRecordSuite(t *testing.T) {
@@ -41,7 +42,7 @@ func (s *RecordSuite) TestRecordDecode() {
 
 func (s *RecordSuite) TestRecordEncode() {
 	data := randomBytes(40)
-	newRec := newRecord(ContentType_Handshake, 1, 22, data)
+	newRec := newRecord(ContentType_Handshake, 1, 22, nil, data)
 
 	rec, rem, err := parseRecord(newRec.Bytes())
 
@@ -94,27 +95,27 @@ func (s *RecordSuite) TestMultiRecordDecode() {
 
 func (s *RecordSuite) TestIsHandshake() {
 	data := randomBytes(40)
-	newRec := newRecord(ContentType_Handshake, 1, 22, data)
+	newRec := newRecord(ContentType_Handshake, 1, 22, nil, data)
 
 	rec, _, _ := parseRecord(newRec.Bytes())
 	assert.Equal(s.T(), true, rec.IsHandshake())
 
 	data = randomBytes(40)
-	newRec = newRecord(ContentType_Appdata, 1, 22, data)
+	newRec = newRecord(ContentType_Appdata, 1, 22, nil, data)
 
 	rec, _, _ = parseRecord(newRec.Bytes())
 	assert.Equal(s.T(), false, rec.IsHandshake())
 }
 
 func (s *RecordSuite) TestPrint() {
-	newRec := newRecord(ContentType_Handshake, 1, 22, nil)
+	newRec := newRecord(ContentType_Handshake, 1, 22, nil, nil)
 
 	rec, _, _ := parseRecord(newRec.Bytes())
 	assert.Equal(s.T(), "contentType[Handshake(22)] version[FEFD] epoch[1] seq[22] length[0] data[]", rec.Print())
 }
 
 func (s *RecordSuite) TestUnderflow() {
-	newRec := newRecord(ContentType_Handshake, 1, 22, nil)
+	newRec := newRecord(ContentType_Handshake, 1, 22, nil, nil)
 
 	data := newRec.Bytes()
 

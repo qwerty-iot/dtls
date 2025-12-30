@@ -64,11 +64,12 @@ type sessionHandshake struct {
 		RandomTime time.Time
 		Random     []byte
 	}
-	lastSeqRecv uint16
-	completed   time.Time
+	lastSeqRecv    uint16
+	completed      time.Time
+	fragmentedData []byte
 }
 
-func newSessionHandshake(ts time.Time) *sessionHandshake {
+func newSessionHandshake(ts time.Time, sessionType string) *sessionHandshake {
 	sh := sessionHandshake{hash: sha256.New(), done: make(chan error), dedup: map[uint16]bool{}, dedupCache: map[uint16][]*record{}}
 	sh.client.RandomTime = ts
 	sh.server.RandomTime = ts
@@ -77,45 +78,52 @@ func newSessionHandshake(ts time.Time) *sessionHandshake {
 	w := newByteWriter()
 	w.PutUint32(uint32(ts.Unix()))
 	w.PutBytes(randomBytes(28))
-	sh.client.Random = w.Bytes()
-	sh.server.Random = w.Bytes()
+	if sessionType == SessionType_Client {
+		sh.client.Random = w.Bytes()
+	} else {
+		sh.server.Random = w.Bytes()
+	}
 	return &sh
 }
 
 func newClientSession(peer *Peer) *session {
 	now := time.Now()
-	sess := &session{Type: SessionType_Client, started: now, handshake: newSessionHandshake(now), peer: peer}
+	sess := &session{Type: SessionType_Client, started: now, handshake: newSessionHandshake(now, SessionType_Client), peer: peer}
 	return sess
 }
 
 func newServerSession(peer *Peer) *session {
 	now := time.Now()
-	sess := &session{Type: SessionType_Server, started: now, peer: peer, handshake: newSessionHandshake(now), Id: randomBytes(32)}
+	sess := &session{Type: SessionType_Server, started: now, peer: peer, handshake: newSessionHandshake(now, SessionType_Server), Id: randomBytes(32)}
 	return sess
 }
 
-func (s *session) updateHash(data []byte) {
+func (s *session) updateHash(rec *record, hs *handshake, data []byte) {
+	if !hs.IsHashable() {
+		return
+	}
 	if DebugHandshakeHash {
-		logDebug(s.peer, nil, "updating hash with [%X]", data)
+		logDebug(s.peer, rec, "updating hash with [%X]", data)
 	}
 	if s.handshake != nil {
 		s.handshake.hash.Write(data)
 	}
 }
 
-func (s *session) reset() {
+func (s *session) reset(rec *record) {
 	if DebugHandshakeHash {
-		logDebug(s.peer, nil, "reset session state")
+		logDebug(s.peer, rec, "reset session state")
 	}
 	s.epoch = 0
 	s.sequenceNumber0 = 0
 	s.sequenceNumber1 = 0
-	s.handshake = newSessionHandshake(time.Now())
+	s.handshake = newSessionHandshake(time.Now(), s.Type)
+	s.handshake.dedup[0] = true
 }
 
-func (s *session) resetHash() {
+func (s *session) resetHash(rec *record) {
 	if DebugHandshakeHash {
-		logDebug(s.peer, nil, "reset hash")
+		logDebug(s.peer, rec, "reset hash")
 	}
 	s.handshake.hash.Reset()
 }
