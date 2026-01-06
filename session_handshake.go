@@ -122,12 +122,14 @@ func (s *session) parseHandshake(rec *record) (*handshake, error) {
 			logDebug(s.peer, rec, "re-assembled fragments")
 			s.updateHash(rec, hs, hs.Header.Bytes())
 			s.updateHash(rec, hs, s.handshake.fragmentedData)
+			bb := bytes.Buffer{}
+			bb.Write(hs.Header.Bytes())
+			bb.Write(s.handshake.fragmentedData)
+			rec.Data = bb.Bytes()
 			s.handshake.fragmentedData = nil
 		} else {
 			return hs, nil
 		}
-	} else {
-		s.updateHash(rec, hs, rec.Data)
 	}
 
 	if s.handshake != nil && (!s.isHandshakeDone() || (s.isHandshakeDone() && hs.Header.HandshakeType != handshakeType_ClientHello)) {
@@ -148,6 +150,8 @@ func (s *session) parseHandshake(rec *record) (*handshake, error) {
 			s.handshake.dedup[hs.Header.Sequence] = true
 		}
 	}
+
+	s.updateHash(rec, hs, rec.Data)
 
 	if DebugHandshake {
 		logDebug(s.peer, rec, "read handshake: %s", hs.Print())

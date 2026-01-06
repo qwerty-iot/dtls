@@ -374,10 +374,20 @@ func (l *Listener) Shutdown() error {
 
 func (l *Listener) AddCipherSuite(cipherSuite CipherSuite) {
 	if l.cipherSuites == nil {
-		l.cipherSuites = make([]CipherSuite, 0, 4)
+		l.cipherSuites = make([]CipherSuite, 0, 5)
 	}
 	l.cipherSuites = append(l.cipherSuites, cipherSuite)
 	return
+}
+
+func (l *Listener) AddAllCipherSuites() {
+	l.cipherSuites = []CipherSuite{
+		CipherSuite_TLS_PSK_WITH_AES_128_CCM_8,
+		CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256,
+		CipherSuite_TLS_PSK_WITH_AES_128_GCM_SHA256,
+		CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
+		CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
+	}
 }
 
 func (l *Listener) AddCompressionMethod(compressionMethod CompressionMethod) {

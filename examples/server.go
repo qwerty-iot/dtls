@@ -3,11 +3,12 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/goccy/go-json"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/qwerty-iot/dtls/v2"
 )
@@ -77,8 +78,7 @@ func main() {
 		listener.AddCipherSuite(dtls.CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8)
 		listener.SetCertificate(*cert)
 	}*/
-	listener.AddCipherSuite(dtls.CipherSuite_TLS_PSK_WITH_AES_128_CCM_8)
-	//listener.AddCipherSuite(dtls.CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256)
+	listener.AddAllCipherSuites()
 
 	listener.AddCompressionMethod(dtls.CompressionMethod_Null)
 
