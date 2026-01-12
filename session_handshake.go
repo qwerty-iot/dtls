@@ -142,7 +142,12 @@ func (s *session) parseHandshake(rec *record) (*handshake, error) {
 			} else {
 				hs.Header.duplicate = true
 				if s.Type == SessionType_Server {
-					s.cacheHandshakeFlush(hs.Header.Sequence)
+					if !s.isHandshakeDone() && hs.Header.HandshakeType == handshakeType_ClientHello && !hs.ClientHello.HasCookie() {
+						// do nothing
+						logDebug(s.peer, rec, "received client hello without cookie duplicate during handshake, ignoring")
+					} else {
+						s.cacheHandshakeFlush(hs.Header.Sequence)
+					}
 				}
 				return hs, nil
 			}
