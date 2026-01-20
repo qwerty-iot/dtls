@@ -17,18 +17,19 @@ const DtlsExtConnectionIdLegacy = uint16(254)
 const DtlsExtConnectionId = uint16(54)
 
 type Listener struct {
-	transport          Transport
-	peers              map[string]*Peer
-	readQueue          chan *msg
-	mux                sync.Mutex
-	wg                 sync.WaitGroup
-	isShutdown         bool
-	cipherSuites       []CipherSuite
-	compressionMethods []CompressionMethod
-	certificate        tls.Certificate
-	cidLen             int
-	maxPacketSize      int
-	maxHandshakeSize   int
+	transport               Transport
+	peers                   map[string]*Peer
+	readQueue               chan *msg
+	mux                     sync.Mutex
+	wg                      sync.WaitGroup
+	isShutdown              bool
+	cipherSuites            []CipherSuite
+	compressionMethods      []CompressionMethod
+	certificate             tls.Certificate
+	cidLen                  int
+	maxPacketSize           int
+	maxHandshakeSize        int
+	dropDuplicateHandshakes bool
 }
 
 var SessionInactivityTimeout = time.Hour * 24
@@ -44,6 +45,8 @@ var HandshakeCompleteCallback func(*Peer, []byte, time.Duration, error)
 var SessionImportCallback func(*Peer) string
 var SessionExportCallback func(*Peer)
 var ValidateCertificateCallback func(*Peer, *x509.Certificate) error
+
+var DropDuplicateHandshakes = false
 
 func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, error) {
 	utrans, err := newUdpTransport(listener, readTimeout)
@@ -238,6 +241,10 @@ func (l *Listener) SetFrameLimits(maxPacket int, maxHandshake int) {
 
 func (l *Listener) EnableConnectionId(cidLen int) {
 	l.cidLen = cidLen
+}
+
+func (l *Listener) DropDuplicateHandshakes(drop bool) {
+	l.dropDuplicateHandshakes = drop
 }
 
 func (l *Listener) RemovePeer(peer *Peer, alertDesc uint8) {

@@ -74,6 +74,13 @@ openssl ecparam -out key.pem -name prime256v1 -genkey
 openssl req -new -key key.pem -x509 -nodes -days 3650 -out cert.pem
 ```
 
+Testing the Server
+------------------
+Some helpful commands for testing the server.
+```bash
+openssl s_client -dtls1_2 -connect 127.0.0.1:4433   -psk_identity myid   -psk 00112233445566778899AABBCCDDEEFF -legacy_renegotiation
+``````
+
 Documentation
 -------------
 
