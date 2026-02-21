@@ -57,7 +57,7 @@ func parseRecord(raw []byte) (*record, []byte, error) {
 	}
 	r.Length = br.GetUint16()
 
-	if r.Version != DtlsVersion12 && r.Version != DtlsVersion10 {
+	if r.Version != DtlsVersion12 && r.Version != DtlsVersion10 && r.Version != DtlsVersionAny {
 		return nil, nil, errors.New("dtls version not supported")
 	}
 
