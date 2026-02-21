@@ -81,6 +81,16 @@ Some helpful commands for testing the server.
 openssl s_client -dtls1_2 -connect 127.0.0.1:4433   -psk_identity myid   -psk 00112233445566778899AABBCCDDEEFF -legacy_renegotiation
 ``````
 
+Testing session resumption
+```bash
+openssl s_client -dtls1_2 -connect 172.24.16.1:4433 -sess_out session.pem -debug -msg -state -psk_identity myid -psk 00112233445566778899AABBCCDDEEFF -cipher 'PSK-AES128-CCM8' -legacy_renegotiation
+openssl s_client -dtls1_2 -connect 172.24.16.1:4433 -sess_in session.pem -debug -msg -state -psk_identity myid -psk 00112233445566778899AABBCCDDEEFF -cipher 'PSK-AES128-CCM8' -legacy_renegotiation
+```
+
+Testing with mbedtls
+```bash
+./programs/ssl/ssl_client2 dtls=1 server_addr=172.24.16.1 server_port=4433 psk_identity=myid psk=00112233445566778899AABBCCDDEEFF debug_level=4
+```
 Documentation
 -------------
 

@@ -703,6 +703,22 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			}
 		case "recv-clienthello-resumed":
 
+			if s.handshake.cidEnabled && s.listener.cidLen > 0 {
+				// if we receive a CID from the client, use the same length CID.
+				cidLen := s.listener.cidLen
+				/*if s.peerCid != nil {
+					cidLen = len(s.peerCid)
+				}*/
+				s.cid = randomBytes(cidLen)
+
+				// first byte of server generated CID is always its length
+				s.cid[0] = byte(cidLen - 1)
+				s.listener.mux.Lock()
+				s.listener.peers[string(s.cid)] = s.peer
+				s.listener.mux.Unlock()
+				logDebug(s.peer, incomingRec, "server cid generated: %X", s.cid)
+			}
+
 			outgoingHs = newHandshake(handshakeType_ServerHello)
 			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.cidVersion, s.selectedCipherSuite)
 			err = s.writeHandshake(outgoingHs)
