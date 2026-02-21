@@ -194,8 +194,8 @@ func (h *clientHello) Print() string {
 		comprStr = comprStr[:len(comprStr)-1]
 	}
 
-	return fmt.Sprintf("version[0x%X] randomData[%s][%X] sessionId[%X][%d] cookie[%X][%d] advertisedCipherSuites[%s][%d] advertisedCompressionMethods[%v][%d] cid[%t][%X]", h.version, time.Unix(int64(h.randomTime), 0).String(),
-		h.randomBytes, h.sessionId, h.sessionIdLen, h.cookie, h.cookieLen, suitesStr, h.cipherSuitesLen, comprStr, h.compressionMethodsLen, h.cidEnable, h.cid)
+	return fmt.Sprintf("version[0x%X] randomData[%s][%X] sessionId[%X][%d] cookie[%X][%d] advertisedCipherSuites[%s][%d] advertisedCompressionMethods[%v][%d] cid[%t][%d][%X]", h.version, time.Unix(int64(h.randomTime), 0).String(),
+		h.randomBytes, h.sessionId, h.sessionIdLen, h.cookie, h.cookieLen, suitesStr, h.cipherSuitesLen, comprStr, h.compressionMethodsLen, h.cidEnable, h.cidVersion, h.cid)
 }
 
 func (h *clientHello) GetRandom() (time.Time, []byte) {
