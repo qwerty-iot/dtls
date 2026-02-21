@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	DtlsVersion10 uint16 = 0xFEFF
-	DtlsVersion12 uint16 = 0xFEFD
+	DtlsVersion10  uint16 = 0xFEFF
+	DtlsVersion12  uint16 = 0xFEFD
+	DtlsVersionAny uint16 = 0xFE00
 )
 
 func randomBytes(length int) []byte {

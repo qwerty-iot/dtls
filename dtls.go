@@ -45,6 +45,7 @@ var HandshakeCompleteCallback func(*Peer, []byte, time.Duration, error)
 var SessionImportCallback func(*Peer) string
 var SessionExportCallback func(*Peer)
 var ValidateCertificateCallback func(*Peer, *x509.Certificate) error
+var OnErrorCallback func(*Peer, string, error)
 
 var DropDuplicateHandshakes = false
 
@@ -143,7 +144,10 @@ func processor(l *Listener, p *Peer) {
 			for {
 				rec, rem, err := p.session.parseRecord(data)
 				if err != nil {
-					l.RemovePeer(p, AlertDesc_DecodeError)
+					if OnErrorCallback != nil {
+						OnErrorCallback(p, "failed to parse record", err)
+					}
+					l.RemovePeer(p, AlertDesc_UnexpectedMessage)
 					break
 				}
 
