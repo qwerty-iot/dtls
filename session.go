@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"hash"
+	"sync"
 	"time"
 )
 
@@ -54,7 +55,6 @@ type sessionHandshake struct {
 	firstDecrypt bool
 	cidEnabled   bool
 	dedup        map[uint16]bool
-	dedupCache   map[uint16][]*record
 	done         chan error
 	client       struct {
 		RandomTime time.Time
@@ -64,13 +64,17 @@ type sessionHandshake struct {
 		RandomTime time.Time
 		Random     []byte
 	}
-	lastSeqRecv    uint16
-	completed      time.Time
-	fragmentedData []byte
+	completed           time.Time
+	fragmentedData      []byte
+	retransmitMu        sync.Mutex
+	flightCapture       *handshakeFlightCapture
+	activeFlight        *handshakeFlight
+	retainedFinalFlight *handshakeFlight
+	flightGeneration    uint64
 }
 
 func newSessionHandshake(ts time.Time, sessionType string) *sessionHandshake {
-	sh := sessionHandshake{hash: sha256.New(), done: make(chan error), dedup: map[uint16]bool{}, dedupCache: map[uint16][]*record{}}
+	sh := sessionHandshake{hash: sha256.New(), done: make(chan error), dedup: map[uint16]bool{}}
 	sh.client.RandomTime = ts
 	sh.server.RandomTime = ts
 
@@ -114,10 +118,11 @@ func (s *session) reset(rec *record) {
 	if DebugHandshakeHash {
 		logDebug(s.peer, rec, "reset session state")
 	}
+	s.stopHandshakeFlights()
 	s.epoch = 0
 	s.sequenceNumber0 = 0
 	s.sequenceNumber1 = 0
-	s.handshake = newSessionHandshake(time.Now(), s.Type)
+	s.handshake = newSessionHandshake(s.now(), s.Type)
 	s.handshake.dedup[0] = true
 }
 

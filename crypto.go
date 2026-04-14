@@ -101,7 +101,7 @@ func generateEccPreMasterSecret(publicKey []byte, privateKey []byte) []byte {
 	resultBytes := result.Bytes()
 	copy(preMasterSecret[len(preMasterSecret)-len(resultBytes):], resultBytes)
 
-	return resultBytes
+	return preMasterSecret
 }
 
 func generatePrf(key, random1, random2 []byte, label string, keyLen int) []byte {

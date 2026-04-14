@@ -132,32 +132,16 @@ func (s *session) parseHandshake(rec *record) (*handshake, error) {
 		}
 	}
 
-	if s.handshake != nil && (!s.isHandshakeDone() || (s.isHandshakeDone() && hs.Header.HandshakeType != handshakeType_ClientHello)) {
+	shouldTrack := s.handshake != nil && (!s.isHandshakeDone() || hs.Header.HandshakeType != handshakeType_ClientHello || (hs.Header.HandshakeType == handshakeType_ClientHello && hs.ClientHello != nil && hs.ClientHello.HasCookie()))
+	if shouldTrack {
 		if _, found := s.handshake.dedup[hs.Header.Sequence]; found {
-			// dupilicate packet received, drop it.
+			// duplicate packet received
 			if hs.Header.HandshakeType == handshakeType_ClientHello && len(s.handshake.client.Random) != 0 && !reflect.DeepEqual(s.handshake.client.Random, hs.ClientHello.randomBytes) {
 				logDebug(s.peer, rec, "received client hello with new random, resetting session")
 				s.reset(rec)
 				s.resetHash(rec)
 			} else {
 				hs.Header.duplicate = true
-				if s.Type == SessionType_Server {
-					if s.listener.dropDuplicateHandshakes || DropDuplicateHandshakes {
-						// do nothing
-						logDebug(s.peer, rec, "received duplicate handshake, ignoring")
-						if DebugHandshake {
-							logDebug(s.peer, rec, "duplicated handshake: %s", hs.Print())
-						}
-					} else if !s.isHandshakeDone() && hs.Header.HandshakeType == handshakeType_ClientHello && !hs.ClientHello.HasCookie() {
-						// do nothing
-						logDebug(s.peer, rec, "received client hello without cookie duplicate during handshake, ignoring")
-						if DebugHandshake {
-							logDebug(s.peer, rec, "duplicated client hello without cookie handshake: %s", hs.Print())
-						}
-					} else {
-						s.cacheHandshakeFlush(hs.Header.Sequence)
-					}
-				}
 				return hs, nil
 			}
 		} else {
@@ -192,7 +176,6 @@ func (s *session) writeHandshake(hs *handshake) error {
 				logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
 			}
 
-			s.cacheHandshake(rec)
 			err := s.writeRecord(rec)
 			if err != nil {
 				return err
@@ -207,7 +190,6 @@ func (s *session) writeHandshake(hs *handshake) error {
 			logDebug(s.peer, rec, "write (handshake) %s", hs.Print())
 		}
 
-		s.cacheHandshake(rec)
 		err := s.writeRecord(rec)
 		return err
 	}
@@ -233,7 +215,6 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 				if DebugHandshake {
 					logDebug(s.peer, rec, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
 				}
-				s.cacheHandshake(rec)
 				recs = append(recs, rec)
 			}
 		} else {
@@ -243,46 +224,10 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 			if DebugHandshake {
 				logDebug(s.peer, rec, "write (handshake) %s", hs.Print())
 			}
-			s.cacheHandshake(rec)
 			recs = append(recs, rec)
 		}
 	}
 	return s.writeRecords(recs)
-}
-
-func (s *session) cacheHandshakeFlush(seq uint16) {
-
-	if recArr, found := s.handshake.dedupCache[seq]; found {
-		for _, rec := range recArr {
-			if rec.ContentType == ContentType_ChangeCipherSpec {
-				s.epoch = 0
-				s.sequenceNumber1 = 0
-			}
-			//rec.Epoch = s.getEpoch()
-			//rec.Sequence = s.getNextSequence()
-			if rec.ContentType == ContentType_ChangeCipherSpec {
-				s.incEpoch()
-			}
-		}
-		err := s.writeRecords(recArr)
-		if err != nil {
-			logWarn(s.peer, nil, err, "retransmit write")
-		} else if DebugHandshake {
-			logDebug(s.peer, nil, "retransmit (handshake)")
-		}
-	}
-}
-
-func (s *session) cacheHandshake(rec *record) {
-	if DebugHandshake {
-		logDebug(s.peer, rec, "storing handshake for retransmit")
-	}
-	if recArr, found := s.handshake.dedupCache[s.handshake.lastSeqRecv]; found {
-		recArr = append(recArr, rec)
-		s.handshake.dedupCache[s.handshake.lastSeqRecv] = recArr
-	} else {
-		s.handshake.dedupCache[s.handshake.lastSeqRecv] = []*record{rec}
-	}
 }
 
 func (s *session) writeRecord(rec *record) error {
@@ -313,12 +258,16 @@ func (s *session) writeRecord(rec *record) error {
 		if DebugEncryption {
 			logDebug(s.peer, rec, "write (encrypted) %s", rec.Print())
 		}
-		return s.peer.transport.WritePacket(rec.Bytes())
+		packet := rec.Bytes()
+		s.captureFlightPacket(packet)
+		return s.peer.transport.WritePacket(packet)
 	} else {
 		if DebugEncryption {
 			logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
 		}
-		return s.peer.transport.WritePacket(rec.Bytes())
+		packet := rec.Bytes()
+		s.captureFlightPacket(packet)
+		return s.peer.transport.WritePacket(packet)
 	}
 }
 
@@ -349,14 +298,18 @@ func (s *session) writeRecords(recs []*record) error {
 		}
 		nextRec := rec.Bytes()
 		if len(nextRec)+buf.Len() > s.listener.maxPacketSize {
-			if err := s.peer.transport.WritePacket(buf.Bytes()); err != nil {
+			packet := append([]byte(nil), buf.Bytes()...)
+			s.captureFlightPacket(packet)
+			if err := s.peer.transport.WritePacket(packet); err != nil {
 				return err
 			}
 			buf.Reset()
 		}
 		buf.Write(nextRec)
 	}
-	return s.peer.transport.WritePacket(buf.Bytes())
+	packet := append([]byte(nil), buf.Bytes()...)
+	s.captureFlightPacket(packet)
+	return s.peer.transport.WritePacket(packet)
 }
 
 func (s *session) generateCookie(hs *handshake) {
@@ -410,7 +363,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 		}
 	}
 	if s.handshake == nil {
-		s.handshake = newSessionHandshake(time.Now(), s.Type)
+		s.handshake = newSessionHandshake(s.now(), s.Type)
 	}
 
 	switch incomingRec.ContentType {
@@ -427,7 +380,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 
 		//if incomingHs.IsDuplicate() && incomingRec.Data[0] != byte(handshakeType_ClientHello) {
 		if incomingHs.IsDuplicate() {
-			logDebug(s.peer, incomingRec, "duplicate handshake received seq: %d", incomingHs.Header.Sequence)
+			s.handleDuplicateHandshake(incomingRec, incomingHs)
 			return nil
 		}
 
@@ -435,8 +388,6 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			logDebug(s.peer, incomingRec, "handshake packet received after handshake is complete")
 			return nil
 		}
-
-		s.handshake.lastSeqRecv = incomingHs.Header.Sequence
 
 		switch incomingHs.Header.HandshakeType {
 		case handshakeType_ClientHello:
@@ -451,9 +402,10 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 					logWarn(s.peer, incomingRec, nil, "previous handshake not completed, last state: %s", s.handshake.state)
 				}
 				s.generateCookie(incomingHs)
-				s.started = time.Now()
+				s.started = s.now()
 				s.handshake.state = "recv-clienthello-initial"
 			} else {
+				s.noteClientFlightProgress(handshakeFlightTriggerClientHelloCookie)
 				s.generateCookie(incomingHs)
 				if s.handshake == nil || s.handshake.cookie == nil {
 					s.handshake.state = "failed"
@@ -570,6 +522,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			logDebug(s.peer, incomingRec, "certificate verified")
 			s.handshake.state = "recv-certificateverify"
 		case handshakeType_ClientKeyExchange:
+			s.noteClientFlightProgress(handshakeFlightTriggerClientFinal)
 			if s.selectedCipherSuite.NeedPsk() {
 				s.peerIdentity = incomingHs.ClientKeyExchange.GetIdentity()
 				psk := GetPskFromKeystore(s.peerIdentity, s.peer.RemoteAddr())
@@ -611,6 +564,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			s.handshake.verifySum = s.getHash()
 			s.handshake.state = "recv-clientkeyexchange"
 		case handshakeType_Finished:
+			s.noteClientFlightProgress(handshakeFlightTriggerClientFinal)
 			var label string
 			if s.Type == SessionType_Client {
 				label = "server"
@@ -640,6 +594,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			s.handshake.savedHash = s.getHash()
 			s.handshake.state = "cipherchangespec"
 		} else {
+			s.handleDuplicateChangeCipherSpec(incomingRec)
 			return nil
 		}
 	}
@@ -647,103 +602,108 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 	if err == nil {
 		switch s.handshake.state {
 		case "recv-clienthello-initial":
-			outgoingHs = newHandshake(handshakeType_HelloVerifyRequest)
-			outgoingHs.HelloVerifyRequest.Init(s.handshake.cookie)
-			err = s.writeHandshake(outgoingHs)
+			err = s.sendCapturedFlight(handshakeFlightTriggerClientHelloInitial, true, false, func() error {
+				outgoingHs = newHandshake(handshakeType_HelloVerifyRequest)
+				outgoingHs.HelloVerifyRequest.Init(s.handshake.cookie)
+				return s.writeHandshake(outgoingHs)
+			})
 			if err != nil {
 				break
 			}
 		case "recv-clienthello":
+			err = s.sendCapturedFlight(handshakeFlightTriggerClientHelloCookie, true, false, func() error {
+				var hsArr []*handshake
 
-			var hsArr []*handshake
+				if s.handshake.cidEnabled && s.listener.cidLen > 0 {
+					// if we receive a CID from the client, use the same length CID.
+					cidLen := s.listener.cidLen
+					/*if s.peerCid != nil {
+						cidLen = len(s.peerCid)
+					}*/
+					s.cid = randomBytes(cidLen)
 
-			if s.handshake.cidEnabled && s.listener.cidLen > 0 {
-				// if we receive a CID from the client, use the same length CID.
-				cidLen := s.listener.cidLen
-				/*if s.peerCid != nil {
-					cidLen = len(s.peerCid)
-				}*/
-				s.cid = randomBytes(cidLen)
-
-				// first byte of server generated CID is always its length
-				s.cid[0] = byte(cidLen - 1)
-				s.listener.mux.Lock()
-				s.listener.peers[string(s.cid)] = s.peer
-				s.listener.mux.Unlock()
-				logDebug(s.peer, incomingRec, "server cid generated: %X", s.cid)
-			}
-
-			outgoingHs = newHandshake(handshakeType_ServerHello)
-			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.cidVersion, s.selectedCipherSuite)
-
-			hsArr = append(hsArr, outgoingHs)
-
-			if s.selectedCipherSuite.NeedCert() {
-				outgoingHs = newHandshake(handshakeType_Certificate)
-				// need server cert
-				_ = outgoingHs.Certificate.Init(s.listener.certificate.Certificate)
-				hsArr = append(hsArr, outgoingHs)
-
-				s.handshake.eccCurve = EccCurve_P256
-				s.handshake.eccKeypair, _ = eccGetKeypair(s.handshake.eccCurve)
-
-				outgoingHs = newHandshake(handshakeType_ServerKeyExchange)
-				signature, err := eccGetKeySignature(s.handshake.client.Random, s.handshake.server.Random, s.handshake.eccKeypair.publicKey, s.handshake.eccCurve, s.listener.certificate.PrivateKey)
-				if err != nil {
-					break
+					// first byte of server generated CID is always its length
+					s.cid[0] = byte(cidLen - 1)
+					s.listener.mux.Lock()
+					s.listener.peers[string(s.cid)] = s.peer
+					s.listener.mux.Unlock()
+					logDebug(s.peer, incomingRec, "server cid generated: %X", s.cid)
 				}
-				outgoingHs.ServerKeyExchange.InitCert(EccCurve_P256, s.handshake.eccKeypair.publicKey, signature)
+
+				outgoingHs = newHandshake(handshakeType_ServerHello)
+				outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.cidVersion, s.selectedCipherSuite)
+
 				hsArr = append(hsArr, outgoingHs)
 
-				outgoingHs = newHandshake(handshakeType_CertificateRequest)
+				if s.selectedCipherSuite.NeedCert() {
+					outgoingHs = newHandshake(handshakeType_Certificate)
+					// need server cert
+					_ = outgoingHs.Certificate.Init(s.listener.certificate.Certificate)
+					hsArr = append(hsArr, outgoingHs)
+
+					s.handshake.eccCurve = EccCurve_P256
+					s.handshake.eccKeypair, _ = eccGetKeypair(s.handshake.eccCurve)
+
+					outgoingHs = newHandshake(handshakeType_ServerKeyExchange)
+					signature, err := eccGetKeySignature(s.handshake.client.Random, s.handshake.server.Random, s.handshake.eccKeypair.publicKey, s.handshake.eccCurve, s.listener.certificate.PrivateKey)
+					if err != nil {
+						return err
+					}
+					outgoingHs.ServerKeyExchange.InitCert(EccCurve_P256, s.handshake.eccKeypair.publicKey, signature)
+					hsArr = append(hsArr, outgoingHs)
+
+					outgoingHs = newHandshake(handshakeType_CertificateRequest)
+					hsArr = append(hsArr, outgoingHs)
+				}
+
+				outgoingHs = newHandshake(handshakeType_ServerHelloDone)
+				outgoingHs.ServerHelloDone.Init()
 				hsArr = append(hsArr, outgoingHs)
-			}
 
-			outgoingHs = newHandshake(handshakeType_ServerHelloDone)
-			outgoingHs.ServerHelloDone.Init()
-			hsArr = append(hsArr, outgoingHs)
-
-			err = s.writeHandshakes(hsArr)
+				return s.writeHandshakes(hsArr)
+			})
 			if err != nil {
 				break
 			}
 		case "recv-clienthello-resumed":
+			err = s.sendCapturedFlight(handshakeFlightTriggerClientFinal, true, false, func() error {
+				if s.handshake.cidEnabled && s.listener.cidLen > 0 {
+					// if we receive a CID from the client, use the same length CID.
+					cidLen := s.listener.cidLen
+					/*if s.peerCid != nil {
+						cidLen = len(s.peerCid)
+					}*/
+					s.cid = randomBytes(cidLen)
 
-			if s.handshake.cidEnabled && s.listener.cidLen > 0 {
-				// if we receive a CID from the client, use the same length CID.
-				cidLen := s.listener.cidLen
-				/*if s.peerCid != nil {
-					cidLen = len(s.peerCid)
-				}*/
-				s.cid = randomBytes(cidLen)
+					// first byte of server generated CID is always its length
+					s.cid[0] = byte(cidLen - 1)
+					s.listener.mux.Lock()
+					s.listener.peers[string(s.cid)] = s.peer
+					s.listener.mux.Unlock()
+					logDebug(s.peer, incomingRec, "server cid generated: %X", s.cid)
+				}
 
-				// first byte of server generated CID is always its length
-				s.cid[0] = byte(cidLen - 1)
-				s.listener.mux.Lock()
-				s.listener.peers[string(s.cid)] = s.peer
-				s.listener.mux.Unlock()
-				logDebug(s.peer, incomingRec, "server cid generated: %X", s.cid)
-			}
+				outgoingHs = newHandshake(handshakeType_ServerHello)
+				outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.cidVersion, s.selectedCipherSuite)
+				if err := s.writeHandshake(outgoingHs); err != nil {
+					return err
+				}
 
-			outgoingHs = newHandshake(handshakeType_ServerHello)
-			outgoingHs.ServerHello.Init(s.handshake.server.Random, s.Id, s.cid, s.cidVersion, s.selectedCipherSuite)
-			err = s.writeHandshake(outgoingHs)
+				s.initKeyBlock()
 
-			s.initKeyBlock()
+				rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), s.getPeerCid(), []byte{0x01})
+				if DebugHandshake {
+					logDebug(s.peer, incomingRec, "session resume incremented epoc from %d to %d", s.getEpoch(), s.getEpoch()+1)
+				}
+				s.incEpoch()
+				if err := s.writeRecord(rec); err != nil {
+					return err
+				}
 
-			rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), s.getPeerCid(), []byte{0x01})
-			if DebugHandshake {
-				logDebug(s.peer, incomingRec, "session resume incremented epoc from %d to %d", s.getEpoch(), s.getEpoch()+1)
-			}
-			s.incEpoch()
-			err = s.writeRecord(rec)
-			if err != nil {
-				break
-			}
-
-			reqHs2 := newHandshake(handshakeType_Finished)
-			reqHs2.Finished.Init(s.keyBlock.MasterSecret, s.getHash(), "server")
-			err = s.writeHandshake(reqHs2)
+				reqHs2 := newHandshake(handshakeType_Finished)
+				reqHs2.Finished.Init(s.keyBlock.MasterSecret, s.getHash(), "server")
+				return s.writeHandshake(reqHs2)
+			})
 			if err != nil {
 				break
 			}
@@ -800,20 +760,20 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			}
 		case "finished":
 			if s.Type == SessionType_Server && !s.handshake.resumed {
-				rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), s.getPeerCid(), []byte{0x01})
-				if DebugHandshake {
-					logDebug(s.peer, incomingRec, "finish incremented inc epoch from %d to %d", s.getEpoch(), s.getEpoch()+1)
-				}
-				s.cacheHandshake(rec)
-				s.incEpoch()
-				err = s.writeRecord(rec)
-				if err != nil {
-					break
-				}
+				err = s.sendCapturedFlight(handshakeFlightTriggerClientFinal, false, true, func() error {
+					rec := newRecord(ContentType_ChangeCipherSpec, s.getEpoch(), s.getNextSequence(), s.getPeerCid(), []byte{0x01})
+					if DebugHandshake {
+						logDebug(s.peer, incomingRec, "finish incremented inc epoch from %d to %d", s.getEpoch(), s.getEpoch()+1)
+					}
+					s.incEpoch()
+					if err := s.writeRecord(rec); err != nil {
+						return err
+					}
 
-				outgoingHs = newHandshake(handshakeType_Finished)
-				outgoingHs.Finished.Init(s.keyBlock.MasterSecret, s.getHash(), "server")
-				err = s.writeHandshake(outgoingHs)
+					outgoingHs = newHandshake(handshakeType_Finished)
+					outgoingHs.Finished.Init(s.keyBlock.MasterSecret, s.getHash(), "server")
+					return s.writeHandshake(outgoingHs)
+				})
 				if err != nil {
 					break
 				}
@@ -822,13 +782,14 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 	}
 
 	if err != nil {
+		s.stopHandshakeFlights()
 		s.handshake.state = "failed"
 		s.handshake.err = err
 		if HandshakeCompleteCallback != nil {
 			if s.selectedCipherSuite.NeedPsk() {
-				HandshakeCompleteCallback(s.peer, s.peerIdentity, time.Now().Sub(s.started), err)
+				HandshakeCompleteCallback(s.peer, s.peerIdentity, s.now().Sub(s.started), err)
 			} else {
-				HandshakeCompleteCallback(s.peer, s.peerPublicKey, time.Now().Sub(s.started), err)
+				HandshakeCompleteCallback(s.peer, s.peerPublicKey, s.now().Sub(s.started), err)
 			}
 		}
 	FORERR:
@@ -845,14 +806,15 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 		s.handshake.err = nil
 	}
 	if s.handshake.state == "finished" {
+		s.promoteActiveFlightToRetainedFinal()
 		if HandshakeCompleteCallback != nil {
 			if s.selectedCipherSuite.NeedPsk() {
-				HandshakeCompleteCallback(s.peer, s.peerIdentity, time.Now().Sub(s.started), nil)
+				HandshakeCompleteCallback(s.peer, s.peerIdentity, s.now().Sub(s.started), nil)
 			} else {
-				HandshakeCompleteCallback(s.peer, s.peerPublicKey, time.Now().Sub(s.started), nil)
+				HandshakeCompleteCallback(s.peer, s.peerPublicKey, s.now().Sub(s.started), nil)
 			}
 		}
-		s.handshake.completed = time.Now()
+		s.handshake.completed = s.now()
 	FORFIN:
 		for {
 			select {

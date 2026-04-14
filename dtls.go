@@ -30,6 +30,7 @@ type Listener struct {
 	maxPacketSize           int
 	maxHandshakeSize        int
 	dropDuplicateHandshakes bool
+	clock                   handshakeClock
 }
 
 var SessionInactivityTimeout = time.Hour * 24
@@ -55,7 +56,7 @@ func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, erro
 		return nil, err
 	}
 
-	l := &Listener{transport: utrans, peers: make(map[string]*Peer), readQueue: make(chan *msg, 128), maxPacketSize: 1400, maxHandshakeSize: 1200}
+	l := &Listener{transport: utrans, peers: make(map[string]*Peer), readQueue: make(chan *msg, 128), maxPacketSize: 1400, maxHandshakeSize: 1200, clock: realHandshakeClock{}}
 	go sweeper(l)
 	l.wg.Add(1)
 	go receiver(l)
@@ -179,8 +180,9 @@ func processor(l *Listener, p *Peer) {
 						l.readQueue <- &msg{rec.Data, p}
 					}
 					//TODO handle case where queue is full and not being read
-					if p.session.handshake != nil && time.Now().After(p.session.handshake.completed.Add(time.Minute*2)) {
+					if p.session.handshake != nil && time.Now().After(p.session.handshake.completed.Add(handshakeFinalFlightRetention)) {
 						// save the handshake data for 2 minutes after establishing a session incase any re-handshaking needs to occur
+						p.session.stopHandshakeFlights()
 						p.session.handshake = nil
 					}
 				}
@@ -253,6 +255,9 @@ func (l *Listener) DropDuplicateHandshakes(drop bool) {
 
 func (l *Listener) RemovePeer(peer *Peer, alertDesc uint8) {
 	l.mux.Lock()
+	if peer != nil && peer.session != nil {
+		peer.session.stopHandshakeFlights()
+	}
 	if alertDesc != AlertDesc_Noop {
 		peer.Close(alertDesc)
 	}
@@ -268,6 +273,9 @@ func (l *Listener) RemovePeerByAddr(addr string, alertDesc uint8) {
 	l.mux.Lock()
 	p, found := l.peers[addr]
 	if found {
+		if p.session != nil {
+			p.session.stopHandshakeFlights()
+		}
 		if alertDesc != AlertDesc_Noop {
 			p.Close(alertDesc)
 		}
