@@ -28,7 +28,11 @@ func (c CipherGcm) GenerateKeyBlock(masterSecret []byte, rawKeyBlock []byte) *Ke
 func (c CipherGcm) Encrypt(s *session, rec *record, key []byte, iv []byte, mac []byte) ([]byte, error) {
     // AEAD GCM: nonce is 12 bytes (4-byte static IV salt + 8-byte explicit from epoch/seq)
     nonce := newNonce(iv, rec.Epoch, rec.Sequence)
-    aad := newAad(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), s.peerCid, uint16(len(rec.Data)))
+    var peerCid []byte
+    if s != nil {
+        peerCid = s.peerCid
+    }
+    aad := newAad(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), peerCid, uint16(len(rec.Data)))
 
     block, err := aes.NewCipher(key)
     if err != nil {
@@ -72,7 +76,11 @@ func (c CipherGcm) Decrypt(s *session, rec *record, key []byte, iv []byte, mac [
     nonce := newNonceFromBytes(iv, explicit)
     // AAD uses the plaintext length; data includes ciphertext+tag(16)
     // rec.Data = 8 (explicit) + plaintext + 16 (tag) => plaintext = len(rec.Data) - 24
-    aad := newAad(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), s.cid, uint16(len(rec.Data)-24))
+    var cid []byte
+    if s != nil {
+        cid = s.cid
+    }
+    aad := newAad(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), cid, uint16(len(rec.Data)-24))
 
     block, err := aes.NewCipher(key)
     if err != nil {

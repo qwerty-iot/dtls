@@ -36,6 +36,8 @@ type session struct {
 	handshake           *sessionHandshake
 	cipher              Cipher
 	selectedCipherSuite CipherSuite
+	protocolVersion     uint16
+	dtls13              *dtls13Session
 }
 
 type sessionHandshake struct {
@@ -73,6 +75,17 @@ type sessionHandshake struct {
 	flightGeneration    uint64
 }
 
+type dtls13Session struct {
+	clientHello         []byte
+	serverHello         []byte
+	encryptedExtensions []byte
+	serverFinished      []byte
+	selectedPsk         []byte
+	selectedIdentity    []byte
+	keys                *dtls13KeySchedule
+	sequenceNumbers     map[uint64]uint64
+}
+
 func newSessionHandshake(ts time.Time, sessionType string) *sessionHandshake {
 	sh := sessionHandshake{hash: sha256.New(), done: make(chan error), dedup: map[uint16]bool{}}
 	sh.client.RandomTime = ts
@@ -92,13 +105,13 @@ func newSessionHandshake(ts time.Time, sessionType string) *sessionHandshake {
 
 func newClientSession(peer *Peer) *session {
 	now := time.Now()
-	sess := &session{Type: SessionType_Client, started: now, handshake: newSessionHandshake(now, SessionType_Client), peer: peer}
+	sess := &session{Type: SessionType_Client, started: now, handshake: newSessionHandshake(now, SessionType_Client), peer: peer, protocolVersion: DtlsVersion12}
 	return sess
 }
 
 func newServerSession(peer *Peer) *session {
 	now := time.Now()
-	sess := &session{Type: SessionType_Server, started: now, peer: peer, handshake: newSessionHandshake(now, SessionType_Server), Id: randomBytes(32)}
+	sess := &session{Type: SessionType_Server, started: now, peer: peer, handshake: newSessionHandshake(now, SessionType_Server), Id: randomBytes(32), protocolVersion: DtlsVersion12}
 	return sess
 }
 
@@ -216,4 +229,21 @@ func (s *session) isHandshakeDone() bool {
 	} else {
 		return false
 	}
+}
+
+func (s *session) isDtls13() bool {
+	return s.protocolVersion == DtlsVersion13
+}
+
+func (s *session) ensureDtls13() {
+	if s.dtls13 == nil {
+		s.dtls13 = &dtls13Session{sequenceNumbers: map[uint64]uint64{}}
+	}
+}
+
+func (s *session) nextDtls13Sequence(epoch uint64) uint64 {
+	s.ensureDtls13()
+	seq := s.dtls13.sequenceNumbers[epoch]
+	s.dtls13.sequenceNumbers[epoch] = seq + 1
+	return seq
 }

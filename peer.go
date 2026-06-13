@@ -117,6 +117,9 @@ func (p *Peer) Close(alertDesc uint8) {
 
 func (p *Peer) Write(data []byte) error {
 	p.activity = time.Now()
+	if p.session != nil && p.session.isDtls13() {
+		return p.session.writeDtls13ApplicationData(data)
+	}
 	rec := newRecord(ContentType_Appdata, p.session.getEpoch(), p.session.getNextSequence(), p.session.peerCid, data)
 	return p.session.writeRecord(rec)
 }

@@ -25,6 +25,7 @@ type Listener struct {
 	isShutdown              bool
 	cipherSuites            []CipherSuite
 	compressionMethods      []CompressionMethod
+	supportedVersions       []uint16
 	certificate             tls.Certificate
 	cidLen                  int
 	maxPacketSize           int
@@ -56,7 +57,7 @@ func NewUdpListener(listener string, readTimeout time.Duration) (*Listener, erro
 		return nil, err
 	}
 
-	l := &Listener{transport: utrans, peers: make(map[string]*Peer), readQueue: make(chan *msg, 128), maxPacketSize: 1400, maxHandshakeSize: 1200, clock: realHandshakeClock{}}
+	l := &Listener{transport: utrans, peers: make(map[string]*Peer), readQueue: make(chan *msg, 128), maxPacketSize: 1400, maxHandshakeSize: 1200, supportedVersions: []uint16{DtlsVersion12}, clock: realHandshakeClock{}}
 	go sweeper(l)
 	l.wg.Add(1)
 	go receiver(l)
@@ -406,7 +407,27 @@ func (l *Listener) AddAllCipherSuites() {
 		CipherSuite_TLS_PSK_WITH_AES_128_GCM_SHA256,
 		CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
 		CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
+		CipherSuite_TLS_AES_128_GCM_SHA256,
+		CipherSuite_TLS_AES_128_CCM_SHA256,
+		CipherSuite_TLS_AES_128_CCM_8_SHA256,
 	}
+}
+
+func (l *Listener) AddProtocolVersion(version uint16) {
+	for _, existing := range l.supportedVersions {
+		if existing == version {
+			return
+		}
+	}
+	l.supportedVersions = append(l.supportedVersions, version)
+}
+
+func (l *Listener) SetProtocolVersions(versions ...uint16) {
+	l.supportedVersions = append([]uint16(nil), versions...)
+}
+
+func (l *Listener) EnableDtls13() {
+	l.AddProtocolVersion(DtlsVersion13)
 }
 
 func (l *Listener) AddCompressionMethod(compressionMethod CompressionMethod) {

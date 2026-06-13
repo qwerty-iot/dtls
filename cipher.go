@@ -9,20 +9,23 @@ import "fmt"
 type CipherSuite uint16
 
 const (
-    CipherSuite_TLS_PSK_WITH_AES_128_CCM_8              CipherSuite = 0xC0A8
-    CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256         CipherSuite = 0x00AE
-    // TLS_PSK_WITH_AES_128_GCM_SHA256 as defined by IANA (0x00A8)
-    CipherSuite_TLS_PSK_WITH_AES_128_GCM_SHA256         CipherSuite = 0x00A8
-    CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8      CipherSuite = 0xC0AE
-    CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 CipherSuite = 0xC023
+	CipherSuite_TLS_PSK_WITH_AES_128_CCM_8      CipherSuite = 0xC0A8
+	CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256 CipherSuite = 0x00AE
+	// TLS_PSK_WITH_AES_128_GCM_SHA256 as defined by IANA (0x00A8)
+	CipherSuite_TLS_PSK_WITH_AES_128_GCM_SHA256         CipherSuite = 0x00A8
+	CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8      CipherSuite = 0xC0AE
+	CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256 CipherSuite = 0xC023
+	CipherSuite_TLS_AES_128_GCM_SHA256                  CipherSuite = 0x1301
+	CipherSuite_TLS_AES_128_CCM_SHA256                  CipherSuite = 0x1304
+	CipherSuite_TLS_AES_128_CCM_8_SHA256                CipherSuite = 0x1305
 )
 
 func (cs CipherSuite) NeedPsk() bool {
-    switch cs {
-    case CipherSuite_TLS_PSK_WITH_AES_128_CCM_8, CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256, CipherSuite_TLS_PSK_WITH_AES_128_GCM_SHA256:
-        return true
-    }
-    return false
+	switch cs {
+	case CipherSuite_TLS_PSK_WITH_AES_128_CCM_8, CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256, CipherSuite_TLS_PSK_WITH_AES_128_GCM_SHA256:
+		return true
+	}
+	return false
 }
 
 func (cs CipherSuite) NeedCert() bool {
@@ -31,6 +34,52 @@ func (cs CipherSuite) NeedCert() bool {
 		return true
 	}
 	return false
+}
+
+func (cs CipherSuite) IsTLS13() bool {
+	switch cs {
+	case CipherSuite_TLS_AES_128_GCM_SHA256, CipherSuite_TLS_AES_128_CCM_SHA256, CipherSuite_TLS_AES_128_CCM_8_SHA256:
+		return true
+	}
+	return false
+}
+
+func (cs CipherSuite) HashSize() int {
+	switch cs {
+	case CipherSuite_TLS_AES_128_GCM_SHA256, CipherSuite_TLS_AES_128_CCM_SHA256, CipherSuite_TLS_AES_128_CCM_8_SHA256:
+		return 32
+	default:
+		return 32
+	}
+}
+
+func (cs CipherSuite) KeySize() int {
+	switch cs {
+	case CipherSuite_TLS_AES_128_GCM_SHA256, CipherSuite_TLS_AES_128_CCM_SHA256, CipherSuite_TLS_AES_128_CCM_8_SHA256:
+		return 16
+	default:
+		return 16
+	}
+}
+
+func (cs CipherSuite) IVSize() int {
+	switch cs {
+	case CipherSuite_TLS_AES_128_GCM_SHA256, CipherSuite_TLS_AES_128_CCM_SHA256, CipherSuite_TLS_AES_128_CCM_8_SHA256:
+		return 12
+	default:
+		return 0
+	}
+}
+
+func (cs CipherSuite) TagSize() int {
+	switch cs {
+	case CipherSuite_TLS_AES_128_CCM_8_SHA256:
+		return 8
+	case CipherSuite_TLS_AES_128_GCM_SHA256, CipherSuite_TLS_AES_128_CCM_SHA256:
+		return 16
+	default:
+		return 0
+	}
 }
 
 func (cs CipherSuite) String() string {
@@ -45,33 +94,39 @@ type Cipher interface {
 }
 
 func getCipher(peer *Peer, cipherSuite CipherSuite) Cipher {
-    switch cipherSuite {
-    case CipherSuite_TLS_PSK_WITH_AES_128_CCM_8:
-        return CipherCcm{peer: peer}
-    case CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256:
-        return CipherCBC{peer: peer}
-    case CipherSuite_TLS_PSK_WITH_AES_128_GCM_SHA256:
-        return CipherGcm{peer: peer}
-    case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8:
-        return CipherCcm{peer: peer}
-    case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256:
-        return CipherCBC{peer: peer}
-    }
-    return nil
+	switch cipherSuite {
+	case CipherSuite_TLS_PSK_WITH_AES_128_CCM_8:
+		return CipherCcm{peer: peer}
+	case CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256:
+		return CipherCBC{peer: peer}
+	case CipherSuite_TLS_PSK_WITH_AES_128_GCM_SHA256:
+		return CipherGcm{peer: peer}
+	case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8:
+		return CipherCcm{peer: peer}
+	case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256:
+		return CipherCBC{peer: peer}
+	}
+	return nil
 }
 
 func cipherSuiteToString(c CipherSuite) string {
-    switch c {
-    case CipherSuite_TLS_PSK_WITH_AES_128_CCM_8:
-        return "TLS_PSK_WITH_AES_128_CCM_8(0xC0A8)"
-    case CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256:
-        return "TLS_PSK_WITH_AES_128_CBC_SHA256(0x00AE)"
-    case CipherSuite_TLS_PSK_WITH_AES_128_GCM_SHA256:
-        return "TLS_PSK_WITH_AES_128_GCM_SHA256(0x00A8)"
-    case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8:
-        return "TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8(0xC0AE)"
-    case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256:
-        return "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256(0xC023)"
-    }
-    return fmt.Sprintf("Unknown(0x%X)", uint16(c))
+	switch c {
+	case CipherSuite_TLS_PSK_WITH_AES_128_CCM_8:
+		return "TLS_PSK_WITH_AES_128_CCM_8(0xC0A8)"
+	case CipherSuite_TLS_PSK_WITH_AES_128_CBC_SHA256:
+		return "TLS_PSK_WITH_AES_128_CBC_SHA256(0x00AE)"
+	case CipherSuite_TLS_PSK_WITH_AES_128_GCM_SHA256:
+		return "TLS_PSK_WITH_AES_128_GCM_SHA256(0x00A8)"
+	case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8:
+		return "TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8(0xC0AE)"
+	case CipherSuite_TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256:
+		return "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256(0xC023)"
+	case CipherSuite_TLS_AES_128_GCM_SHA256:
+		return "TLS_AES_128_GCM_SHA256(0x1301)"
+	case CipherSuite_TLS_AES_128_CCM_SHA256:
+		return "TLS_AES_128_CCM_SHA256(0x1304)"
+	case CipherSuite_TLS_AES_128_CCM_8_SHA256:
+		return "TLS_AES_128_CCM_8_SHA256(0x1305)"
+	}
+	return fmt.Sprintf("Unknown(0x%X)", uint16(c))
 }

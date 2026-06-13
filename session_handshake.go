@@ -17,6 +17,14 @@ import (
 )
 
 func (s *session) parseRecord(data []byte) (*record, []byte, error) {
+	if len(data) > 0 && data[0]&0xE0 == dtls13UnifiedHeaderFixedBits {
+		rec, rem, err := s.parseDtls13Ciphertext(data)
+		if err != nil {
+			logWarn(s.peer, nil, err, "dtls: bad DTLS 1.3 packet")
+			return nil, nil, err
+		}
+		return rec, rem, nil
+	}
 
 	rec, rem, err := parseRecord(data)
 	if err != nil {
@@ -321,6 +329,10 @@ func (s *session) generateCookie(hs *handshake) {
 }
 
 func (s *session) startHandshake() error {
+	if s.shouldStartDtls13() {
+		return s.startHandshake13()
+	}
+
 	reqHs := newHandshake(handshakeType_ClientHello)
 	reqHs.ClientHello.Init(s.Id, s.handshake.client.Random, nil, s.listener.cipherSuites, s.listener.compressionMethods)
 	if s.listener.cidLen > 0 {
@@ -346,6 +358,9 @@ func (s *session) waitForHandshake(timeout time.Duration) error {
 			return err
 		}
 	case <-time.After(timeout):
+		if s.handshake.state == "" {
+			return errors.New("dtls: timed out waiting for handshake to complete")
+		}
 		return fmt.Errorf("dtls: timed out waiting for handshake to complete (state:%s)", s.handshake.state)
 	}
 }
@@ -391,6 +406,9 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 
 		switch incomingHs.Header.HandshakeType {
 		case handshakeType_ClientHello:
+			if incomingHs.ClientHello.SupportsVersion(DtlsVersion13) && s.supportsProtocolVersion(DtlsVersion13) {
+				return s.processDtls13Handshake(incomingRec, incomingHs)
+			}
 			cookie := incomingHs.ClientHello.GetCookie()
 			if len(cookie) == 0 {
 				if s.isHandshakeDone() {
@@ -475,6 +493,9 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 				}
 			}
 		case handshakeType_ServerHello:
+			if incomingHs.ServerHello.supportedVersion == DtlsVersion13 || s.isDtls13() {
+				return s.processDtls13Handshake(incomingRec, incomingHs)
+			}
 			s.handshake.server.RandomTime, s.handshake.server.Random = incomingHs.ServerHello.GetRandom()
 			sid := incomingHs.ServerHello.GetSessionId()
 			if len(sid) != 0 && reflect.DeepEqual(s.Id, sid) {
@@ -564,6 +585,9 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			s.handshake.verifySum = s.getHash()
 			s.handshake.state = "recv-clientkeyexchange"
 		case handshakeType_Finished:
+			if s.isDtls13() {
+				return s.processDtls13Handshake(incomingRec, incomingHs)
+			}
 			s.noteClientFlightProgress(handshakeFlightTriggerClientFinal)
 			var label string
 			if s.Type == SessionType_Client {
@@ -584,6 +608,9 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			s.handshake.state = "finished"
 			break
 		default:
+			if s.isDtls13() {
+				return s.processDtls13Handshake(incomingRec, incomingHs)
+			}
 			logWarn(s.peer, incomingRec, nil, "invalid handshake type [%v] received", incomingRec.ContentType)
 			err = errors.New("dtls: bad handshake type")
 			break

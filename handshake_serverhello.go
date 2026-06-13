@@ -20,6 +20,8 @@ type serverHello struct {
 	compressionMethod CompressionMethod
 	cid               []byte
 	cidVersion        uint16
+	supportedVersion  uint16
+	selectedPsk       *uint16
 }
 
 func (h *serverHello) Init(randomBytes []byte, sessionId []byte, cid []byte, cidVersion uint16, cipherSuite CipherSuite) {
@@ -32,6 +34,12 @@ func (h *serverHello) Init(randomBytes []byte, sessionId []byte, cid []byte, cid
 	h.cidVersion = cidVersion
 	h.cipherSuite = cipherSuite
 	h.compressionMethod = CompressionMethod_Null
+}
+
+func (h *serverHello) Init13(randomBytes []byte, sessionId []byte, cipherSuite CipherSuite, selectedPsk uint16) {
+	h.Init(randomBytes, sessionId, nil, 0, cipherSuite)
+	h.supportedVersion = DtlsVersion13
+	h.selectedPsk = &selectedPsk
 }
 
 func (h *serverHello) Parse(rdr *byteReader, size int) error {
@@ -60,6 +68,11 @@ func (h *serverHello) Parse(rdr *byteReader, size int) error {
 				cidLen := rdr.GetUint8()
 				h.cid = rdr.GetBytes(int(cidLen))
 				h.cidVersion = DtlsExtConnectionIdLegacy
+			case DtlsExtSupportedVersions:
+				h.supportedVersion = rdr.GetUint16()
+			case DtlsExtPreSharedKey:
+				selected := rdr.GetUint16()
+				h.selectedPsk = &selected
 			default:
 				rdr.GetBytes(int(extLen))
 			}
@@ -103,6 +116,18 @@ func (h *serverHello) Bytes() []byte {
 		ext.PutUint16(2)
 		ext.PutUint8(1)
 		ext.PutUint8(0)
+	}
+
+	if h.supportedVersion != 0 {
+		ext.PutUint16(DtlsExtSupportedVersions)
+		ext.PutUint16(2)
+		ext.PutUint16(h.supportedVersion)
+	}
+
+	if h.selectedPsk != nil {
+		ext.PutUint16(DtlsExtPreSharedKey)
+		ext.PutUint16(2)
+		ext.PutUint16(*h.selectedPsk)
 	}
 
 	if eb := ext.Bytes(); len(eb) != 0 {

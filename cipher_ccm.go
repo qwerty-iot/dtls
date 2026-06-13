@@ -33,7 +33,11 @@ func (c CipherCcm) GenerateKeyBlock(masterSecret []byte, rawKeyBlock []byte) *Ke
 func (c CipherCcm) Encrypt(s *session, rec *record, key []byte, iv []byte, mac []byte) ([]byte, error) {
 
 	nonce := newNonce(iv, rec.Epoch, rec.Sequence)
-	aad := newAad(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), s.peerCid, uint16(len(rec.Data)))
+	var peerCid []byte
+	if s != nil {
+		peerCid = s.peerCid
+	}
+	aad := newAad(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), peerCid, uint16(len(rec.Data)))
 
 	cipher, err := aes.NewCipher(key)
 	if err != nil {
@@ -72,7 +76,11 @@ func (c CipherCcm) Encrypt(s *session, rec *record, key []byte, iv []byte, mac [
 
 func (c CipherCcm) Decrypt(s *session, rec *record, key []byte, iv []byte, mac []byte) ([]byte, error) {
 	nonce := newNonceFromBytes(iv, rec.Data[:8])
-	aad := newAad(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), s.cid, uint16(len(rec.Data)-16))
+	var cid []byte
+	if s != nil {
+		cid = s.cid
+	}
+	aad := newAad(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), cid, uint16(len(rec.Data)-16))
 	data := rec.Data[8:]
 
 	cipher, err := aes.NewCipher(key)

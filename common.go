@@ -11,6 +11,7 @@ import (
 const (
 	DtlsVersion10  uint16 = 0xFEFF
 	DtlsVersion12  uint16 = 0xFEFD
+	DtlsVersion13  uint16 = 0xFEFC
 	DtlsVersionAny uint16 = 0xFE00
 )
 

@@ -28,6 +28,15 @@ type clientHello struct {
 	cidEnable             bool
 	cidVersion            uint16
 	cid                   []byte
+	supportedVersions     []uint16
+	pskKeyExchangeModes   []uint8
+	pskIdentities         []dtls13PSKIdentity
+	pskBinders            [][]byte
+}
+
+type dtls13PSKIdentity struct {
+	Identity            []byte
+	ObfuscatedTicketAge uint32
 }
 
 func (h *clientHello) Init(sessionId []byte, randomBytes []byte, cookie []byte, cipherSuites []CipherSuite, compressionMethods []CompressionMethod) error {
@@ -56,6 +65,19 @@ func (h *clientHello) EnableCid(cid []byte, version uint16) {
 	h.cidEnable = true
 	h.cidVersion = version
 	h.cid = cid
+}
+
+func (h *clientHello) EnableSupportedVersions(versions []uint16) {
+	h.supportedVersions = append([]uint16(nil), versions...)
+}
+
+func (h *clientHello) EnablePskKeyExchangeModes(modes []uint8) {
+	h.pskKeyExchangeModes = append([]uint8(nil), modes...)
+}
+
+func (h *clientHello) EnableExternalPSK(identity []byte, binder []byte) {
+	h.pskIdentities = []dtls13PSKIdentity{{Identity: append([]byte(nil), identity...)}}
+	h.pskBinders = [][]byte{append([]byte(nil), binder...)}
 }
 
 func (h *clientHello) Parse(rdr *byteReader, size int) error {
@@ -104,6 +126,30 @@ func (h *clientHello) Parse(rdr *byteReader, size int) error {
 				cidLen := rdr.GetUint8()
 				if cidLen > 0 {
 					h.cid = rdr.GetBytes(int(cidLen))
+				}
+			case DtlsExtSupportedVersions:
+				versionsLen := int(rdr.GetUint8())
+				for i := 0; i < versionsLen/2; i++ {
+					h.supportedVersions = append(h.supportedVersions, rdr.GetUint16())
+				}
+			case DtlsExtPskKeyExchangeModes:
+				modesLen := int(rdr.GetUint8())
+				h.pskKeyExchangeModes = rdr.GetBytes(modesLen)
+			case DtlsExtPreSharedKey:
+				identitiesLen := int(rdr.GetUint16())
+				for readIdentities := 0; readIdentities < identitiesLen; {
+					identityLen := int(rdr.GetUint16())
+					identity := rdr.GetBytes(identityLen)
+					age := rdr.GetUint32()
+					h.pskIdentities = append(h.pskIdentities, dtls13PSKIdentity{Identity: identity, ObfuscatedTicketAge: age})
+					readIdentities += 2 + identityLen + 4
+				}
+				bindersLen := int(rdr.GetUint16())
+				for readBinders := 0; readBinders < bindersLen; {
+					binderLen := int(rdr.GetUint8())
+					binder := rdr.GetBytes(binderLen)
+					h.pskBinders = append(h.pskBinders, binder)
+					readBinders += 1 + binderLen
 				}
 			default:
 				rdr.GetBytes(int(extLen))
@@ -168,6 +214,48 @@ func (h *clientHello) Bytes() []byte {
 		ext.PutUint16(4)
 		ext.PutUint16(2)
 		ext.PutUint16(0x0403)
+	}
+
+	if len(h.supportedVersions) > 0 {
+		ext.PutUint16(DtlsExtSupportedVersions)
+		ext.PutUint16(uint16(1 + len(h.supportedVersions)*2))
+		ext.PutUint8(uint8(len(h.supportedVersions) * 2))
+		for _, version := range h.supportedVersions {
+			ext.PutUint16(version)
+		}
+	}
+
+	if len(h.pskKeyExchangeModes) > 0 {
+		ext.PutUint16(DtlsExtPskKeyExchangeModes)
+		ext.PutUint16(uint16(1 + len(h.pskKeyExchangeModes)))
+		ext.PutUint8(uint8(len(h.pskKeyExchangeModes)))
+		ext.PutBytes(h.pskKeyExchangeModes)
+	}
+
+	if len(h.pskIdentities) > 0 {
+		pskExt := newByteWriter()
+		identities := newByteWriter()
+		for _, identity := range h.pskIdentities {
+			identities.PutUint16(uint16(len(identity.Identity)))
+			identities.PutBytes(identity.Identity)
+			identities.PutUint32(identity.ObfuscatedTicketAge)
+		}
+		identitiesBytes := identities.Bytes()
+		pskExt.PutUint16(uint16(len(identitiesBytes)))
+		pskExt.PutBytes(identitiesBytes)
+
+		binders := newByteWriter()
+		for _, binder := range h.pskBinders {
+			binders.PutUint8(uint8(len(binder)))
+			binders.PutBytes(binder)
+		}
+		bindersBytes := binders.Bytes()
+		pskExt.PutUint16(uint16(len(bindersBytes)))
+		pskExt.PutBytes(bindersBytes)
+		pskExtBytes := pskExt.Bytes()
+		ext.PutUint16(DtlsExtPreSharedKey)
+		ext.PutUint16(uint16(len(pskExtBytes)))
+		ext.PutBytes(pskExtBytes)
 	}
 
 	if eb := ext.Bytes(); len(eb) != 0 {
@@ -246,6 +334,29 @@ func (h *clientHello) SelectCipherSuite(supported []CipherSuite) CipherSuite {
 		}
 	}
 	return 0
+}
+
+func (h *clientHello) SelectTLS13CipherSuite(supported []CipherSuite) CipherSuite {
+	for _, ad := range supported {
+		if !ad.IsTLS13() {
+			continue
+		}
+		for _, cipher := range h.cipherSuites {
+			if ad == cipher {
+				return cipher
+			}
+		}
+	}
+	return 0
+}
+
+func (h *clientHello) SupportsVersion(version uint16) bool {
+	for _, supported := range h.supportedVersions {
+		if supported == version {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *clientHello) GetCompressionMethods() []CompressionMethod {

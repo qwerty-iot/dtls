@@ -13,16 +13,18 @@ import (
 type handshakeType uint8
 
 const (
-	handshakeType_ClientHello        handshakeType = 1
-	handshakeType_ServerHello        handshakeType = 2
-	handshakeType_HelloVerifyRequest handshakeType = 3
-	handshakeType_Certificate        handshakeType = 11
-	handshakeType_ServerKeyExchange  handshakeType = 12
-	handshakeType_CertificateRequest handshakeType = 13
-	handshakeType_ServerHelloDone    handshakeType = 14
-	handshakeType_CertificateVerify  handshakeType = 15
-	handshakeType_ClientKeyExchange  handshakeType = 16
-	handshakeType_Finished           handshakeType = 20
+	handshakeType_ClientHello         handshakeType = 1
+	handshakeType_ServerHello         handshakeType = 2
+	handshakeType_HelloVerifyRequest  handshakeType = 3
+	handshakeType_EncryptedExtensions handshakeType = 8
+	handshakeType_Certificate         handshakeType = 11
+	handshakeType_ServerKeyExchange   handshakeType = 12
+	handshakeType_CertificateRequest  handshakeType = 13
+	handshakeType_ServerHelloDone     handshakeType = 14
+	handshakeType_CertificateVerify   handshakeType = 15
+	handshakeType_ClientKeyExchange   handshakeType = 16
+	handshakeType_Finished            handshakeType = 20
+	handshakeType_ACK                 handshakeType = 26
 )
 
 type CompressionMethod uint8
@@ -39,20 +41,21 @@ type payload interface {
 }
 
 type handshake struct {
-	Header             header
-	Payload            payload
-	Fragment           []byte
-	ClientHello        *clientHello
-	ServerHello        *serverHello
-	HelloVerifyRequest *helloVerifyRequest
-	Certificate        *certificate
-	ServerKeyExchange  *serverKeyExchange
-	CertificateRequest *certificateRequest
-	ServerHelloDone    *serverHelloDone
-	CertificateVerify  *certificateVerify
-	ClientKeyExchange  *clientKeyExchange
-	Finished           *finished
-	Unknown            *unknown
+	Header              header
+	Payload             payload
+	Fragment            []byte
+	ClientHello         *clientHello
+	ServerHello         *serverHello
+	HelloVerifyRequest  *helloVerifyRequest
+	EncryptedExtensions *encryptedExtensions
+	Certificate         *certificate
+	ServerKeyExchange   *serverKeyExchange
+	CertificateRequest  *certificateRequest
+	ServerHelloDone     *serverHelloDone
+	CertificateVerify   *certificateVerify
+	ClientKeyExchange   *clientKeyExchange
+	Finished            *finished
+	Unknown             *unknown
 }
 
 func (h *handshake) Print() string {
@@ -123,6 +126,9 @@ func newHandshake(handshakeType handshakeType) *handshake {
 	case handshakeType_HelloVerifyRequest:
 		hs.HelloVerifyRequest = &helloVerifyRequest{}
 		hs.Payload = hs.HelloVerifyRequest
+	case handshakeType_EncryptedExtensions:
+		hs.EncryptedExtensions = &encryptedExtensions{}
+		hs.Payload = hs.EncryptedExtensions
 	case handshakeType_Certificate:
 		hs.Certificate = &certificate{}
 		hs.Payload = hs.Certificate
@@ -197,6 +203,8 @@ func typeToString(t handshakeType) string {
 		return "ServerHello(2)"
 	case handshakeType_HelloVerifyRequest:
 		return "HelloVerifyRequest(3)"
+	case handshakeType_EncryptedExtensions:
+		return "EncryptedExtensions(8)"
 	case handshakeType_Certificate:
 		return "Certificate(11)"
 	case handshakeType_ServerKeyExchange:
@@ -211,6 +219,8 @@ func typeToString(t handshakeType) string {
 		return "ClientKeyExchange(16)"
 	case handshakeType_Finished:
 		return "Finished(20)"
+	case handshakeType_ACK:
+		return "ACK(26)"
 	}
 	return fmt.Sprintf("Unknown(%d)", int(t))
 }

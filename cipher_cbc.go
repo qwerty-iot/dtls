@@ -55,6 +55,10 @@ func newMac(s *session, epoch uint16, seq uint64, msgType uint8, data []byte, ke
 func (c CipherCBC) Encrypt(s *session, rec *record, key []byte, iv []byte, mac []byte) ([]byte, error) {
 
 	clearText := rec.Data
+	var peerCid []byte
+	if s != nil {
+		peerCid = s.peerCid
+	}
 
 	cbcCipher, err := aes.NewCipher(key)
 	if err != nil {
@@ -63,7 +67,7 @@ func (c CipherCBC) Encrypt(s *session, rec *record, key []byte, iv []byte, mac [
 	cbc := cipher.NewCBCEncrypter(cbcCipher, iv).(cbcMode)
 	blockSize := cbc.BlockSize()
 
-	MAC, err := newMac(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), clearText, mac, s.peerCid)
+	MAC, err := newMac(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), clearText, mac, peerCid)
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +105,10 @@ func (c CipherCBC) Encrypt(s *session, rec *record, key []byte, iv []byte, mac [
 }
 
 func (c CipherCBC) Decrypt(s *session, rec *record, key []byte, iv []byte, mac []byte) ([]byte, error) {
+	var cid []byte
+	if s != nil {
+		cid = s.cid
+	}
 
 	cbcCipher, err := aes.NewCipher(key)
 	if err != nil {
@@ -137,7 +145,7 @@ func (c CipherCBC) Decrypt(s *session, rec *record, key []byte, iv []byte, mac [
 
 	clearText = clearText[:dataEnd]
 
-	actualMAC, err := newMac(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), clearText, mac, s.cid)
+	actualMAC, err := newMac(s, rec.Epoch, rec.Sequence, uint8(rec.ContentType), clearText, mac, cid)
 	if paddingGood != 255 || err != nil || !hmac.Equal(actualMAC, expectedMAC) {
 		return nil, errors.New("dtls: mac invalid")
 	}

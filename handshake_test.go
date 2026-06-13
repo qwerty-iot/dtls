@@ -275,7 +275,7 @@ func (s *HandshakeSuite) TestClientKeyExchangeDecode() {
 	assert.Nil(s.T(), err)
 	assert.NotNil(s.T(), handshake)
 	assert.NotNil(s.T(), handshake.ClientKeyExchange)
-	assert.Equal(s.T(), "peerIdentity", string(handshake.ClientKeyExchange.GetIdentity()))
+	assert.Equal(s.T(), "Identity", string(handshake.ClientKeyExchange.GetIdentity()))
 
 	handshake.Print()
 }
