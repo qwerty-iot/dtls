@@ -53,8 +53,13 @@ func eccGetKeySignature(clientRandom, serverRandom, publicKey []byte, ec eccCurv
 
 	msg := eccGetKeyMessage(clientRandom, serverRandom, publicKey, ec)
 
+	ecdsaKey, ok := privateKey.(*ecdsa.PrivateKey)
+	if !ok || ecdsaKey == nil {
+		return nil, errors.New("dtls: certificate cipher suite requires ECDSA private key")
+	}
+
 	hashed := sha256.Sum256(msg)
-	return privateKey.(*ecdsa.PrivateKey).Sign(rand.Reader, hashed[:], crypto.SHA256)
+	return ecdsaKey.Sign(rand.Reader, hashed[:], crypto.SHA256)
 }
 
 type ecdsaSignature struct {

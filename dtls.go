@@ -154,7 +154,7 @@ func processor(l *Listener, p *Peer) {
 
 				if rec.IsHandshake() {
 					if err := p.session.processHandshakePacket(rec); err != nil {
-						l.RemovePeer(p, AlertDesc_HandshakeFailure)
+						l.RemovePeer(p, alertDescFromError(err, AlertDesc_HandshakeFailure))
 						logWarn(p, rec, err, "failed to complete handshake")
 					}
 				} else if rec.IsAlert() {
@@ -163,6 +163,7 @@ func processor(l *Listener, p *Peer) {
 					if err != nil {
 						l.RemovePeer(p, AlertDesc_DecodeError)
 						logWarn(p, rec, err, "failed to parse alert")
+						break
 					}
 					if alert.Type == AlertType_Warning {
 						logWarn(p, nil, nil, "received warning alert: %s", alertDescToString(alert.Desc))
@@ -238,6 +239,14 @@ func (l *Listener) SetCertificate(cert tls.Certificate) error {
 	}
 	l.certificate = cert
 	return nil
+}
+
+func (l *Listener) supportsCertificateHandshake() bool {
+	if len(l.certificate.Certificate) == 0 {
+		return false
+	}
+	_, ok := l.certificate.PrivateKey.(*ecdsa.PrivateKey)
+	return ok
 }
 
 func (l *Listener) SetFrameLimits(maxPacket int, maxHandshake int) {

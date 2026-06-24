@@ -45,6 +45,31 @@ type alert struct {
 	Desc uint8
 }
 
+type alertError struct {
+	desc uint8
+	err  error
+}
+
+func newAlertError(desc uint8, err error) error {
+	return &alertError{desc: desc, err: err}
+}
+
+func (e *alertError) Error() string {
+	return e.err.Error()
+}
+
+func (e *alertError) Unwrap() error {
+	return e.err
+}
+
+func alertDescFromError(err error, fallback uint8) uint8 {
+	var ae *alertError
+	if errors.As(err, &ae) {
+		return ae.desc
+	}
+	return fallback
+}
+
 func newAlert(t uint8, d uint8) *alert {
 	return &alert{t, d}
 }

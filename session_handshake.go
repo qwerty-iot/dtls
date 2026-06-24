@@ -427,6 +427,11 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 					err = errors.New("dtls: no valid cipher available")
 					break
 				}
+				if s.selectedCipherSuite.NeedCert() && !s.listener.supportsCertificateHandshake() {
+					s.handshake.state = "failed"
+					err = newAlertError(AlertDesc_NoCertificate, errors.New("dtls: certificate cipher suite selected but no ECDSA certificate is configured"))
+					break
+				}
 				if incomingHs.ClientHello.cidEnable {
 					s.handshake.cidEnabled = true
 					s.cidVersion = incomingHs.ClientHello.cidVersion
