@@ -175,6 +175,9 @@ func newTestClientHelloRecord(t *testing.T, random []byte, cookie []byte, seq ui
 func deliverHandshakePacket(t *testing.T, sess *session, packet []byte) {
 	t.Helper()
 
+	sess.beginHandshakeDatagram()
+	defer sess.finishHandshakeDatagram()
+
 	data := packet
 	for len(data) > 0 {
 		rec, rem, err := sess.parseRecord(data)
@@ -183,6 +186,34 @@ func deliverHandshakePacket(t *testing.T, sess *session, packet []byte) {
 		require.True(t, rec.IsHandshake(), "expected handshake record")
 		require.NoError(t, sess.processHandshakePacket(rec))
 		data = rem
+	}
+}
+
+func parseTestRecords(t *testing.T, packet []byte) []*record {
+	t.Helper()
+
+	var records []*record
+	data := packet
+	for len(data) > 0 {
+		rec, rem, err := parseRecord(data)
+		require.NoError(t, err)
+		require.NotNil(t, rec)
+		records = append(records, rec)
+		data = rem
+	}
+	return records
+}
+
+func assertSameRecordPayloads(t *testing.T, expected []byte, actual []byte) {
+	t.Helper()
+
+	expectedRecords := parseTestRecords(t, expected)
+	actualRecords := parseTestRecords(t, actual)
+	require.Len(t, actualRecords, len(expectedRecords))
+	for i := range expectedRecords {
+		assert.Equal(t, expectedRecords[i].ContentType, actualRecords[i].ContentType)
+		assert.Equal(t, expectedRecords[i].Epoch, actualRecords[i].Epoch)
+		assert.Equal(t, expectedRecords[i].Data, actualRecords[i].Data)
 	}
 }
 
@@ -242,26 +273,31 @@ func TestServerRetransmitsHelloVerifyRequestForDuplicatesAndTimers(t *testing.T)
 
 	clock.Advance(1 * time.Second)
 	require.Len(t, serverEndpoint.AllWrites(), 3)
-	assert.Equal(t, helloVerify, serverEndpoint.AllWrites()[2])
+	assertSameRecordPayloads(t, helloVerify, serverEndpoint.AllWrites()[2])
+	assert.Equal(t, uint64(1), parseTestRecords(t, serverEndpoint.AllWrites()[2])[0].Sequence)
 
 	clock.Advance(7 * time.Second)
 	require.Len(t, serverEndpoint.AllWrites(), 3)
 
 	clock.Advance(1 * time.Second)
 	require.Len(t, serverEndpoint.AllWrites(), 4)
-	assert.Equal(t, helloVerify, serverEndpoint.AllWrites()[3])
+	assertSameRecordPayloads(t, helloVerify, serverEndpoint.AllWrites()[3])
+	assert.Equal(t, uint64(2), parseTestRecords(t, serverEndpoint.AllWrites()[3])[0].Sequence)
 
 	clock.Advance(16 * time.Second)
 	require.Len(t, serverEndpoint.AllWrites(), 5)
-	assert.Equal(t, helloVerify, serverEndpoint.AllWrites()[4])
+	assertSameRecordPayloads(t, helloVerify, serverEndpoint.AllWrites()[4])
+	assert.Equal(t, uint64(3), parseTestRecords(t, serverEndpoint.AllWrites()[4])[0].Sequence)
 
 	clock.Advance(32 * time.Second)
 	require.Len(t, serverEndpoint.AllWrites(), 6)
-	assert.Equal(t, helloVerify, serverEndpoint.AllWrites()[5])
+	assertSameRecordPayloads(t, helloVerify, serverEndpoint.AllWrites()[5])
+	assert.Equal(t, uint64(4), parseTestRecords(t, serverEndpoint.AllWrites()[5])[0].Sequence)
 
 	clock.Advance(60 * time.Second)
 	require.Len(t, serverEndpoint.AllWrites(), 7)
-	assert.Equal(t, helloVerify, serverEndpoint.AllWrites()[6])
+	assertSameRecordPayloads(t, helloVerify, serverEndpoint.AllWrites()[6])
+	assert.Equal(t, uint64(5), parseTestRecords(t, serverEndpoint.AllWrites()[6])[0].Sequence)
 
 	clock.Advance(60 * time.Second)
 	require.Len(t, serverEndpoint.AllWrites(), 7)
@@ -284,12 +320,48 @@ func TestServerReplaysCookieHelloFlightAndRetiresPreviousTimer(t *testing.T) {
 
 	require.NoError(t, server.processHandshakePacket(newTestClientHelloRecord(t, random, cookie, 1)))
 	require.Len(t, serverEndpoint.AllWrites(), 3)
-	assert.Equal(t, serverHelloFlight, serverEndpoint.AllWrites()[2])
+	assertSameRecordPayloads(t, serverHelloFlight, serverEndpoint.AllWrites()[2])
+	replayedRecords := parseTestRecords(t, serverEndpoint.AllWrites()[2])
+	assert.Equal(t, uint64(3), replayedRecords[0].Sequence)
+	assert.Equal(t, uint64(4), replayedRecords[1].Sequence)
 
 	clock.Advance(4 * time.Second)
 	require.Len(t, serverEndpoint.AllWrites(), 4)
-	assert.Equal(t, serverHelloFlight, serverEndpoint.AllWrites()[3])
+	assertSameRecordPayloads(t, serverHelloFlight, serverEndpoint.AllWrites()[3])
+	timerRecords := parseTestRecords(t, serverEndpoint.AllWrites()[3])
+	assert.Equal(t, uint64(5), timerRecords[0].Sequence)
+	assert.Equal(t, uint64(6), timerRecords[1].Sequence)
 	assert.NotEqual(t, helloVerify, serverEndpoint.AllWrites()[3])
+}
+
+func TestServerMirrorsClientHelloRecordSequences(t *testing.T) {
+	clock := newFakeHandshakeClock(time.Unix(0, 0))
+	listener := newTestHandshakeListener(clock)
+	server, serverEndpoint := newTestHandshakeSession(listener, SessionType_Server, "server")
+	require.False(t, listener.dropDuplicateHandshakes)
+	require.False(t, DropDuplicateHandshakes)
+
+	random := testRandom(0x30)
+	initialClientHello := newTestClientHelloRecord(t, random, nil, 0)
+	initialClientHello.Sequence = 7
+	require.NoError(t, server.processHandshakePacket(initialClientHello))
+
+	writes := serverEndpoint.AllWrites()
+	require.Len(t, writes, 1)
+	helloVerifyRecords := parseTestRecords(t, writes[0])
+	require.Len(t, helloVerifyRecords, 1)
+	assert.Equal(t, uint64(7), helloVerifyRecords[0].Sequence)
+
+	cookieClientHello := newTestClientHelloRecord(t, random, append([]byte(nil), server.handshake.cookie...), 1)
+	cookieClientHello.Sequence = 11
+	require.NoError(t, server.processHandshakePacket(cookieClientHello))
+
+	writes = serverEndpoint.AllWrites()
+	require.Len(t, writes, 2)
+	serverHelloRecords := parseTestRecords(t, writes[1])
+	require.Len(t, serverHelloRecords, 2)
+	assert.Equal(t, uint64(11), serverHelloRecords[0].Sequence)
+	assert.Equal(t, uint64(12), serverHelloRecords[1].Sequence)
 }
 
 func TestServerRetainsAndReplaysFinalFlightForTwoMinutes(t *testing.T) {
@@ -320,24 +392,35 @@ func TestServerRetainsAndReplaysFinalFlightForTwoMinutes(t *testing.T) {
 	clientWrites := clientEndpoint.AllWrites()
 	require.GreaterOrEqual(t, len(clientWrites), 5)
 	duplicateFinished := clientWrites[len(clientWrites)-1]
+	duplicateFinalFlight := append([]byte(nil), clientWrites[len(clientWrites)-3]...)
+	duplicateFinalFlight = append(duplicateFinalFlight, clientWrites[len(clientWrites)-2]...)
+	duplicateFinalFlight = append(duplicateFinalFlight, duplicateFinished...)
 
 	seq0 := server.sequenceNumber0
 	seq1 := server.sequenceNumber1
 
-	deliverHandshakePacket(t, server, duplicateFinished)
+	deliverHandshakePacket(t, server, duplicateFinalFlight)
 	serverWrites = serverEndpoint.AllWrites()
 	require.Len(t, serverWrites, 6)
-	assert.Equal(t, originalFinalFlight[0], serverWrites[4])
-	assert.Equal(t, originalFinalFlight[1], serverWrites[5])
-	assert.Equal(t, seq0, server.sequenceNumber0)
-	assert.Equal(t, seq1, server.sequenceNumber1)
+	assert.NotEqual(t, originalFinalFlight[0], serverWrites[4])
+	assert.NotEqual(t, originalFinalFlight[1], serverWrites[5])
+	assert.Equal(t, seq0+1, server.sequenceNumber0)
+	assert.Equal(t, seq1+1, server.sequenceNumber1)
+	assert.Equal(t, seq0, parseTestRecords(t, serverWrites[4])[0].Sequence)
+	assert.Equal(t, seq1, parseTestRecords(t, serverWrites[5])[0].Sequence)
+	originalFinishedRecord, _, err := client.parseRecord(originalFinalFlight[1])
+	require.NoError(t, err)
+	replayedFinishedRecord, _, err := client.parseRecord(serverWrites[5])
+	require.NoError(t, err)
+	assert.Equal(t, originalFinishedRecord.Data, replayedFinishedRecord.Data)
+	assert.Equal(t, ContentType(ContentType_Handshake), replayedFinishedRecord.ContentType)
 
 	clock.Advance((2 * time.Minute) - time.Second)
 	deliverHandshakePacket(t, server, duplicateFinished)
 	serverWrites = serverEndpoint.AllWrites()
 	require.Len(t, serverWrites, 8)
-	assert.Equal(t, originalFinalFlight[0], serverWrites[6])
-	assert.Equal(t, originalFinalFlight[1], serverWrites[7])
+	assert.Equal(t, seq0+1, parseTestRecords(t, serverWrites[6])[0].Sequence)
+	assert.Equal(t, seq1+1, parseTestRecords(t, serverWrites[7])[0].Sequence)
 
 	clock.Advance(2 * time.Second)
 	deliverHandshakePacket(t, server, duplicateFinished)

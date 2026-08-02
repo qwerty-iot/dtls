@@ -158,6 +158,10 @@ func (s *session) parseHandshake(rec *record) (*handshake, error) {
 }
 
 func (s *session) writeHandshake(hs *handshake) error {
+	return s.writeHandshakeWithInitialRecordSequence(hs, nil)
+}
+
+func (s *session) writeHandshakeWithInitialRecordSequence(hs *handshake, initialRecordSequence *uint64) error {
 
 	hs.Header.Sequence = s.handshake.seq
 	s.handshake.seq += 1
@@ -171,7 +175,12 @@ func (s *session) writeHandshake(hs *handshake) error {
 
 		for idx := 0; idx < dataLen/s.listener.maxHandshakeSize+1; idx++ {
 			data = hs.FragmentBytes(idx*s.listener.maxHandshakeSize, s.listener.maxHandshakeSize)
-			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
+			var requestedSequence *uint64
+			if idx == 0 {
+				requestedSequence = initialRecordSequence
+			}
+			sequence := s.getRecordSequence(s.getEpoch(), requestedSequence)
+			rec := newRecord(ContentType_Handshake, s.getEpoch(), sequence, nil, data)
 			if DebugHandshake {
 				logDebug(s.peer, nil, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
 			}
@@ -183,7 +192,8 @@ func (s *session) writeHandshake(hs *handshake) error {
 		}
 		return nil
 	} else {
-		rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
+		sequence := s.getRecordSequence(s.getEpoch(), initialRecordSequence)
+		rec := newRecord(ContentType_Handshake, s.getEpoch(), sequence, nil, data)
 
 		s.updateHash(rec, hs, data)
 		if DebugHandshake {
@@ -196,7 +206,12 @@ func (s *session) writeHandshake(hs *handshake) error {
 }
 
 func (s *session) writeHandshakes(hss []*handshake) error {
+	return s.writeHandshakesWithInitialRecordSequence(hss, nil)
+}
+
+func (s *session) writeHandshakesWithInitialRecordSequence(hss []*handshake, initialRecordSequence *uint64) error {
 	var recs []*record
+	firstRecord := true
 	for _, hs := range hss {
 
 		hs.Header.Sequence = s.handshake.seq
@@ -211,14 +226,26 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 
 			for idx := 0; idx < dataLen/s.listener.maxHandshakeSize+1; idx++ {
 				data = hs.FragmentBytes(idx*s.listener.maxHandshakeSize, s.listener.maxHandshakeSize)
-				rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
+				var requestedSequence *uint64
+				if firstRecord {
+					requestedSequence = initialRecordSequence
+				}
+				sequence := s.getRecordSequence(s.getEpoch(), requestedSequence)
+				firstRecord = false
+				rec := newRecord(ContentType_Handshake, s.getEpoch(), sequence, nil, data)
 				if DebugHandshake {
 					logDebug(s.peer, rec, "write (handshake) %s (fragment %d/%d)", hs.Print(), idx*s.listener.maxHandshakeSize, dataLen)
 				}
 				recs = append(recs, rec)
 			}
 		} else {
-			rec := newRecord(ContentType_Handshake, s.getEpoch(), s.getNextSequence(), nil, data)
+			var requestedSequence *uint64
+			if firstRecord {
+				requestedSequence = initialRecordSequence
+			}
+			sequence := s.getRecordSequence(s.getEpoch(), requestedSequence)
+			firstRecord = false
+			rec := newRecord(ContentType_Handshake, s.getEpoch(), sequence, nil, data)
 
 			s.updateHash(rec, hs, data)
 			if DebugHandshake {
@@ -231,6 +258,15 @@ func (s *session) writeHandshakes(hss []*handshake) error {
 }
 
 func (s *session) writeRecord(rec *record) error {
+	flightRecord := &record{
+		ContentType: rec.ContentType,
+		Version:     rec.Version,
+		Epoch:       rec.Epoch,
+		Sequence:    rec.Sequence,
+		Length:      rec.Length,
+		Cid:         append([]byte(nil), rec.Cid...),
+		Data:        append([]byte(nil), rec.Data...),
+	}
 	if rec.Epoch != 0 {
 		var iv []byte
 		var key []byte
@@ -259,21 +295,31 @@ func (s *session) writeRecord(rec *record) error {
 			logDebug(s.peer, rec, "write (encrypted) %s", rec.Print())
 		}
 		packet := rec.Bytes()
-		s.captureFlightPacket(packet)
+		s.captureFlightRecords([]*record{flightRecord})
 		return s.peer.transport.WritePacket(packet)
 	} else {
 		if DebugEncryption {
 			logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
 		}
 		packet := rec.Bytes()
-		s.captureFlightPacket(packet)
+		s.captureFlightRecords([]*record{flightRecord})
 		return s.peer.transport.WritePacket(packet)
 	}
 }
 
 func (s *session) writeRecords(recs []*record) error {
 	buf := bytes.Buffer{}
+	var flightRecords []*record
 	for _, rec := range recs {
+		flightRecord := &record{
+			ContentType: rec.ContentType,
+			Version:     rec.Version,
+			Epoch:       rec.Epoch,
+			Sequence:    rec.Sequence,
+			Length:      rec.Length,
+			Cid:         append([]byte(nil), rec.Cid...),
+			Data:        append([]byte(nil), rec.Data...),
+		}
 		if rec.Epoch != 0 {
 			var iv []byte
 			var key []byte
@@ -297,18 +343,20 @@ func (s *session) writeRecords(recs []*record) error {
 			logDebug(s.peer, rec, "write (unencrypted) %s", rec.Print())
 		}
 		nextRec := rec.Bytes()
-		if len(nextRec)+buf.Len() > s.listener.maxPacketSize {
+		if len(nextRec)+buf.Len() > s.listener.maxPacketSize && buf.Len() > 0 {
 			packet := append([]byte(nil), buf.Bytes()...)
-			s.captureFlightPacket(packet)
+			s.captureFlightRecords(flightRecords)
 			if err := s.peer.transport.WritePacket(packet); err != nil {
 				return err
 			}
 			buf.Reset()
+			flightRecords = nil
 		}
 		buf.Write(nextRec)
+		flightRecords = append(flightRecords, flightRecord)
 	}
 	packet := append([]byte(nil), buf.Bytes()...)
-	s.captureFlightPacket(packet)
+	s.captureFlightRecords(flightRecords)
 	return s.peer.transport.WritePacket(packet)
 }
 
@@ -610,7 +658,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 			err = s.sendCapturedFlight(handshakeFlightTriggerClientHelloInitial, true, false, func() error {
 				outgoingHs = newHandshake(handshakeType_HelloVerifyRequest)
 				outgoingHs.HelloVerifyRequest.Init(s.handshake.cookie)
-				return s.writeHandshake(outgoingHs)
+				return s.writeHandshakeWithInitialRecordSequence(outgoingHs, &incomingRec.Sequence)
 			})
 			if err != nil {
 				break
@@ -665,7 +713,7 @@ func (s *session) processHandshakePacket(incomingRec *record) error {
 				outgoingHs.ServerHelloDone.Init()
 				hsArr = append(hsArr, outgoingHs)
 
-				return s.writeHandshakes(hsArr)
+				return s.writeHandshakesWithInitialRecordSequence(hsArr, &incomingRec.Sequence)
 			})
 			if err != nil {
 				break

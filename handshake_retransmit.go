@@ -1,8 +1,6 @@
 package dtls
 
-import (
-	"time"
-)
+import "time"
 
 var handshakeRetransmitIntervals = []time.Duration{
 	4 * time.Second,
@@ -23,9 +21,20 @@ const (
 	handshakeFlightTriggerClientFinal
 )
 
+type handshakeFlightRecord struct {
+	contentType ContentType
+	epoch       uint16
+	cid         []byte
+	data        []byte
+}
+
+type handshakeFlightPacket struct {
+	records []handshakeFlightRecord
+}
+
 type handshakeFlight struct {
 	trigger      handshakeFlightTrigger
-	packets      [][]byte
+	packets      []handshakeFlightPacket
 	nextDelayIdx int
 	timer        handshakeTimer
 	expiresAt    time.Time
@@ -34,7 +43,13 @@ type handshakeFlight struct {
 
 type handshakeFlightCapture struct {
 	trigger handshakeFlightTrigger
-	packets [][]byte
+	packets []handshakeFlightPacket
+}
+
+type pendingHandshakeReplay struct {
+	trigger             handshakeFlightTrigger
+	reason              string
+	firstRecordSequence *uint64
 }
 
 func (t handshakeFlightTrigger) String() string {
@@ -64,12 +79,39 @@ func (s *session) getHandshakeClock() handshakeClock {
 	return realHandshakeClock{}
 }
 
+// cloneFlightPackets is used by the in-memory test transport as well as other
+// callers that need an independent copy of raw datagrams.
 func cloneFlightPackets(packets [][]byte) [][]byte {
 	out := make([][]byte, len(packets))
 	for i, packet := range packets {
 		out[i] = append([]byte(nil), packet...)
 	}
 	return out
+}
+
+func cloneHandshakeFlightPackets(packets []handshakeFlightPacket) []handshakeFlightPacket {
+	out := make([]handshakeFlightPacket, len(packets))
+	for packetIdx, packet := range packets {
+		out[packetIdx].records = make([]handshakeFlightRecord, len(packet.records))
+		for recordIdx, record := range packet.records {
+			out[packetIdx].records[recordIdx] = handshakeFlightRecord{
+				contentType: record.contentType,
+				epoch:       record.epoch,
+				cid:         append([]byte(nil), record.cid...),
+				data:        append([]byte(nil), record.data...),
+			}
+		}
+	}
+	return out
+}
+
+func cloneRecordForFlight(rec *record) handshakeFlightRecord {
+	return handshakeFlightRecord{
+		contentType: rec.ContentType,
+		epoch:       rec.Epoch,
+		cid:         append([]byte(nil), rec.Cid...),
+		data:        append([]byte(nil), rec.Data...),
+	}
 }
 
 func (s *session) beginFlightCapture(trigger handshakeFlightTrigger) {
@@ -90,20 +132,27 @@ func (s *session) abortFlightCapture() {
 	s.handshake.retransmitMu.Unlock()
 }
 
-func (s *session) captureFlightPacket(packet []byte) {
-	if s == nil || s.handshake == nil {
+func (s *session) captureFlightRecords(records []*record) {
+	if s == nil || s.handshake == nil || len(records) == 0 {
 		return
 	}
+	packet := handshakeFlightPacket{records: make([]handshakeFlightRecord, len(records))}
+	for i, rec := range records {
+		packet.records[i] = cloneRecordForFlight(rec)
+	}
+
 	s.handshake.retransmitMu.Lock()
 	if s.handshake.flightCapture != nil {
-		s.handshake.flightCapture.packets = append(s.handshake.flightCapture.packets, append([]byte(nil), packet...))
+		s.handshake.flightCapture.packets = append(s.handshake.flightCapture.packets, packet)
 	}
 	s.handshake.retransmitMu.Unlock()
 }
 
 func (s *session) sendCapturedFlight(trigger handshakeFlightTrigger, expectResponse bool, retain bool, send func() error) error {
 	s.beginFlightCapture(trigger)
+	s.flightWriteMu.Lock()
 	err := send()
+	s.flightWriteMu.Unlock()
 	if err != nil {
 		s.abortFlightCapture()
 		return err
@@ -144,7 +193,7 @@ func (s *session) finishFlightCapture(expectResponse bool, retain bool) {
 		s.handshake.flightGeneration++
 		flight := &handshakeFlight{
 			trigger:    capture.trigger,
-			packets:    cloneFlightPackets(capture.packets),
+			packets:    cloneHandshakeFlightPackets(capture.packets),
 			generation: s.handshake.flightGeneration,
 		}
 		s.handshake.activeFlight = flight
@@ -157,7 +206,7 @@ func (s *session) finishFlightCapture(expectResponse bool, retain bool) {
 	if retain {
 		s.handshake.retainedFinalFlight = &handshakeFlight{
 			trigger:   capture.trigger,
-			packets:   cloneFlightPackets(capture.packets),
+			packets:   cloneHandshakeFlightPackets(capture.packets),
 			expiresAt: now.Add(handshakeFinalFlightRetention),
 		}
 		s.handshake.retransmitMu.Unlock()
@@ -187,7 +236,7 @@ func (s *session) handleFlightTimer(generation uint64) {
 		return
 	}
 
-	var packets [][]byte
+	var packets []handshakeFlightPacket
 	var trigger handshakeFlightTrigger
 	var attempt int
 
@@ -198,56 +247,130 @@ func (s *session) handleFlightTimer(generation uint64) {
 		return
 	}
 
-	packets = cloneFlightPackets(flight.packets)
+	packets = cloneHandshakeFlightPackets(flight.packets)
 	trigger = flight.trigger
 	attempt = flight.nextDelayIdx + 1
 	flight.nextDelayIdx++
 	s.scheduleNextFlightTimerLocked(flight)
 	s.handshake.retransmitMu.Unlock()
 
-	if err := s.writeStoredFlightPackets(packets); err != nil {
+	if err := s.writeStoredFlightPackets(packets, nil); err != nil {
 		logWarn(s.peer, nil, err, "handshake timer retransmit write")
 		return
 	}
 	logDebug(s.peer, nil, "timer retransmit attempt %d for %s", attempt, trigger.String())
 }
 
-func (s *session) writeStoredFlightPackets(packets [][]byte) error {
+func (s *session) writeStoredFlightPackets(packets []handshakeFlightPacket, firstRecordSequence *uint64) error {
+	s.flightWriteMu.Lock()
+	defer s.flightWriteMu.Unlock()
+
+	firstRecord := true
 	for _, packet := range packets {
-		if err := s.peer.transport.WritePacket(append([]byte(nil), packet...)); err != nil {
+		records := make([]*record, 0, len(packet.records))
+		for _, stored := range packet.records {
+			var requestedSequence *uint64
+			if firstRecord && firstRecordSequence != nil {
+				requestedSequence = firstRecordSequence
+			}
+			sequence := s.getRecordSequence(stored.epoch, requestedSequence)
+			firstRecord = false
+			records = append(records, newRecord(stored.contentType, stored.epoch, sequence, append([]byte(nil), stored.cid...), append([]byte(nil), stored.data...)))
+		}
+
+		if len(records) == 1 {
+			if err := s.writeRecord(records[0]); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := s.writeRecords(records); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *session) replayStoredFlight(trigger handshakeFlightTrigger, reason string) bool {
+func (s *session) replayStoredFlight(trigger handshakeFlightTrigger, reason string, firstRecordSequence *uint64) bool {
 	if s == nil || s.handshake == nil {
 		return false
 	}
 
 	now := s.now()
-	var packets [][]byte
+	var packets []handshakeFlightPacket
 
 	s.handshake.retransmitMu.Lock()
 	s.clearRetainedFinalFlightLocked(now)
 	switch {
 	case s.handshake.activeFlight != nil && s.handshake.activeFlight.trigger == trigger:
-		packets = cloneFlightPackets(s.handshake.activeFlight.packets)
+		packets = cloneHandshakeFlightPackets(s.handshake.activeFlight.packets)
 	case trigger == handshakeFlightTriggerClientFinal && s.handshake.retainedFinalFlight != nil:
-		packets = cloneFlightPackets(s.handshake.retainedFinalFlight.packets)
+		packets = cloneHandshakeFlightPackets(s.handshake.retainedFinalFlight.packets)
 	}
 	s.handshake.retransmitMu.Unlock()
 
 	if len(packets) == 0 {
 		return false
 	}
-	if err := s.writeStoredFlightPackets(packets); err != nil {
+	if err := s.writeStoredFlightPackets(packets, firstRecordSequence); err != nil {
 		logWarn(s.peer, nil, err, "handshake replay write")
 		return true
 	}
 	logDebug(s.peer, nil, "replayed %s server flight for %s", trigger.String(), reason)
 	return true
+}
+
+func cloneUint64(value *uint64) *uint64 {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
+func (s *session) beginHandshakeDatagram() {
+	if s == nil {
+		return
+	}
+	s.datagramReplayMu.Lock()
+	s.deferFlightReplay = true
+	s.pendingFlightReplay = nil
+	s.datagramReplayMu.Unlock()
+}
+
+func (s *session) finishHandshakeDatagram() {
+	if s == nil {
+		return
+	}
+	s.datagramReplayMu.Lock()
+	pending := s.pendingFlightReplay
+	s.pendingFlightReplay = nil
+	s.deferFlightReplay = false
+	s.datagramReplayMu.Unlock()
+
+	if pending != nil && !s.replayStoredFlight(pending.trigger, pending.reason, pending.firstRecordSequence) {
+		logDebug(s.peer, nil, "duplicate handshake received (no cached %s flight)", pending.trigger.String())
+	}
+}
+
+func (s *session) requestStoredFlightReplay(trigger handshakeFlightTrigger, reason string, firstRecordSequence *uint64) bool {
+	if s == nil {
+		return false
+	}
+	s.datagramReplayMu.Lock()
+	if s.deferFlightReplay {
+		if s.pendingFlightReplay == nil || trigger >= s.pendingFlightReplay.trigger {
+			s.pendingFlightReplay = &pendingHandshakeReplay{
+				trigger:             trigger,
+				reason:              reason,
+				firstRecordSequence: cloneUint64(firstRecordSequence),
+			}
+		}
+		s.datagramReplayMu.Unlock()
+		return true
+	}
+	s.datagramReplayMu.Unlock()
+	return s.replayStoredFlight(trigger, reason, firstRecordSequence)
 }
 
 func (s *session) promoteActiveFlightToRetainedFinal() {
@@ -267,7 +390,7 @@ func (s *session) promoteActiveFlightToRetainedFinal() {
 	}
 	s.handshake.retainedFinalFlight = &handshakeFlight{
 		trigger:   handshakeFlightTriggerClientFinal,
-		packets:   cloneFlightPackets(flight.packets),
+		packets:   cloneHandshakeFlightPackets(flight.packets),
 		expiresAt: now.Add(handshakeFinalFlightRetention),
 	}
 	s.handshake.activeFlight = nil
@@ -359,7 +482,11 @@ func (s *session) handleDuplicateHandshake(rec *record, hs *handshake) {
 		return
 	}
 
-	if !s.replayStoredFlight(trigger, hs.Print()) {
+	var firstRecordSequence *uint64
+	if trigger == handshakeFlightTriggerClientHelloInitial {
+		firstRecordSequence = &rec.Sequence
+	}
+	if !s.requestStoredFlightReplay(trigger, hs.Print(), firstRecordSequence) {
 		logDebug(s.peer, rec, "duplicate handshake received seq: %d (no cached flight)", hs.Header.Sequence)
 	}
 }
@@ -372,7 +499,7 @@ func (s *session) handleDuplicateChangeCipherSpec(rec *record) {
 		logDebug(s.peer, rec, "received duplicate change cipher spec, ignoring")
 		return
 	}
-	if !s.replayStoredFlight(handshakeFlightTriggerClientFinal, "duplicate change cipher spec") {
+	if !s.requestStoredFlightReplay(handshakeFlightTriggerClientFinal, "duplicate change cipher spec", nil) {
 		logDebug(s.peer, rec, "duplicate change cipher spec received (no cached flight)")
 	}
 }

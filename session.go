@@ -36,6 +36,11 @@ type session struct {
 	handshake           *sessionHandshake
 	cipher              Cipher
 	selectedCipherSuite CipherSuite
+	sequenceMu          sync.Mutex
+	flightWriteMu       sync.Mutex
+	datagramReplayMu    sync.Mutex
+	deferFlightReplay   bool
+	pendingFlightReplay *pendingHandshakeReplay
 }
 
 type sessionHandshake struct {
@@ -119,9 +124,11 @@ func (s *session) reset(rec *record) {
 		logDebug(s.peer, rec, "reset session state")
 	}
 	s.stopHandshakeFlights()
+	s.sequenceMu.Lock()
 	s.epoch = 0
 	s.sequenceNumber0 = 0
 	s.sequenceNumber1 = 0
+	s.sequenceMu.Unlock()
 	s.handshake = newSessionHandshake(s.now(), s.Type)
 	s.handshake.dedup[0] = true
 }
@@ -146,21 +153,45 @@ func (s *session) getEpoch() uint16 {
 }
 
 func (s *session) incEpoch() {
+	s.sequenceMu.Lock()
+	defer s.sequenceMu.Unlock()
 	s.epoch += uint16(1)
 	s.sequenceNumber1 = 0
 	return
 }
 
 func (s *session) getNextSequence() uint64 {
-	if s.epoch == 0 {
+	return s.getNextSequenceForEpoch(s.epoch)
+}
+
+func (s *session) getNextSequenceForEpoch(epoch uint16) uint64 {
+	return s.getRecordSequence(epoch, nil)
+}
+
+func (s *session) getRecordSequence(epoch uint16, requested *uint64) uint64 {
+	s.sequenceMu.Lock()
+	defer s.sequenceMu.Unlock()
+
+	if requested != nil {
+		next := *requested + 1
+		if epoch == 0 {
+			if s.sequenceNumber0 < next {
+				s.sequenceNumber0 = next
+			}
+		} else if s.sequenceNumber1 < next {
+			s.sequenceNumber1 = next
+		}
+		return *requested
+	}
+
+	if epoch == 0 {
 		seq := s.sequenceNumber0
 		s.sequenceNumber0 += 1
 		return seq
-	} else {
-		seq := s.sequenceNumber1
-		s.sequenceNumber1 += 1
-		return seq
 	}
+	seq := s.sequenceNumber1
+	s.sequenceNumber1 += 1
+	return seq
 }
 
 func (s *session) getSequence() uint64 {

@@ -142,6 +142,7 @@ func processor(l *Listener, p *Peer) {
 	for {
 		select {
 		case data := <-p.transportQueue:
+			p.session.beginHandshakeDatagram()
 			for {
 				rec, rem, err := p.session.parseRecord(data)
 				if err != nil {
@@ -193,6 +194,7 @@ func processor(l *Listener, p *Peer) {
 					data = rem
 				}
 			}
+			p.session.finishHandshakeDatagram()
 		default:
 			p.Lock()
 			if len(p.transportQueue) == 0 {
