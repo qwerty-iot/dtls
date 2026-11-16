@@ -80,8 +80,8 @@ func receiver(l *Listener) {
 			l.wg.Done()
 			return
 		}
-		if data == nil {
-			// handles case of a soft-failure on read.
+		if len(data) == 0 {
+			// Ignore soft read failures and empty UDP datagrams.
 			continue
 		}
 
@@ -127,15 +127,14 @@ func receiver(l *Listener) {
 }
 
 func peekCidFromRecord(data []byte) []byte {
-	if data[0] == ContentType_Appdata_Cid {
-		cidLen := data[11]
-		if int(cidLen)+12 > len(data) {
-			return nil
-		}
-		return data[11 : 12+cidLen]
-	} else {
+	if len(data) < 12 || data[0] != ContentType_Appdata_Cid {
 		return nil
 	}
+	cidEnd := 12 + int(data[11])
+	if cidEnd > len(data) {
+		return nil
+	}
+	return data[11:cidEnd]
 }
 
 func processor(l *Listener, p *Peer) {
